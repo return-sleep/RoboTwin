@@ -19,7 +19,7 @@ submit-linux-amd64
 viewer_show.*
 weights/
 eval_video/
-
+down/*
 # tmp
 base_task_bac.py
 _tmp_save_pic.py
@@ -50,3 +50,4 @@ policy/weights/*
 curobo/*
 ./get_video.py
 **/.DS_Store
+policy/RDT/model_config/*

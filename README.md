@@ -11,7 +11,7 @@ Organizers: <a href="https://yaomarkmu.github.io/">Yao Mu</a>, <a href="https://
 **RoboTwin**, accepted to <i style="color: red; display: inline;"><b>CVPR 2025</b></i> and <i style="color: red; display: inline;"><b>ECCV Workshop 2024 (Best Paper Award)</b></i>:<br>[Webpage](https://robotwin-benchmark.github.io/early-version) | [PDF](https://arxiv.org/pdf/2409.02920) | [arXiv](https://arxiv.org/abs/2409.02920)<br>
 <img src="https://hits.seeyoufarm.com/api/count/incr/badge.svg?url=https%3A%2F%2Fgithub.com%2FTianxingChen%2FRoboTwin&count_bg=%23184FFF&title_bg=%23E116E5&icon=&icon_color=%23E7E7E7&title=Repo+Viewers&edge_flat=true"/><img alt="GitHub Repo stars" src="https://img.shields.io/github/stars/TianxingChen/RoboTwin">
 
-**Hardware Support**: AgileX Robotics (æ¾çµæœºå™¨äºº)
+**Hardware Support**: AgileX Robotics (æ¾çµæœºå™¨äº?)
 **Software Support**: D-robotics (åœ°å¹³çº¿åœ°ç“œæœºå™¨äºº)
 
 **ğŸ† Awards (Bonus only for Real-world Track)**: 
@@ -23,7 +23,7 @@ Organizers: <a href="https://yaomarkmu.github.io/">Yao Mu</a>, <a href="https://
 # ğŸ‘Œ Important Updates
 * **2025.03.20**, We've done the online briefing and released the code. The tactile task code is still pending release.
 
-# ğŸ› ï¸ Installation
+# Installation
 > Please note that you need to strictly follow the steps: **Modify `mplib` Library Code** and **Download Assert**.
 
 Clone this Repo:
@@ -33,7 +33,7 @@ git clone -b CVPR-Challenge-2025 https://github.com/TianxingChen/RoboTwin.git
 
 See [INSTALL.md](./INSTALL.md) for installation instructions. The installation process takes about 20 minutes.
 
-# ğŸ§‘ğŸ»â€ğŸ’» Usage 
+# Usage 
 ## 1. Task Running and Data Collection
 Running the following command will first search for a random seed for the target collection quantity (default is 100), and then replay the seed to collect data.
 
@@ -73,17 +73,17 @@ Please build your project in the root directory `policy/Your-Policy`. You may ch
 ```
 # default file structure
 Your-Policy
-â”œâ”€â”€ checkpoints
-â”‚   â””â”€â”€ __init__.py
-â”‚   â””â”€â”€ ckpt1
-â”‚       â””â”€â”€ ...
-â”‚   â””â”€â”€ ckpt2
-â”‚       â””â”€â”€ ...
-â”œâ”€â”€ data
-â”‚   â””â”€â”€ __init__.py
-â”œâ”€â”€ deploy_policy.py
-â”œâ”€â”€ requirement.txt
-â””â”€â”€ pyproject.toml
+©À©¤©¤ checkpoints
+©¦   ©¸©¤©¤ __init__.py
+©¦   ©¸©¤©¤ ckpt1
+©¦       ©¸©¤©¤ ...
+©¦   ©¸©¤©¤ ckpt2
+©¦       ©¸©¤©¤ ...
+©À©¤©¤ data
+©¦   ©¸©¤©¤ __init__.py
+©À©¤©¤ deploy_policy.py
+©À©¤©¤ requirement.txt
+©¸©¤©¤ pyproject.toml
 ```
 
 For the project environment setup, please use `requirement.txt` as much as possible. We'll run `pip install -r requirement.txt` by default. If you have special requirements, feel free to contact us via email (`robotwinbenchmark@gmail.com`).
@@ -152,7 +152,7 @@ export CUDA_VISIBLE_DEVICES=${gpu_id}
 python ./script/eval_policy.py "$task_name" "$head_camera_type" "$policy_name" "$ckpt_file_path"
 ```
 
-# ğŸš´â€â™‚ï¸ Baselines
+# Baselines
 
 ## 1. Diffusion Policy
 The DP code can be found in `policy/Diffusion-Policy`.
@@ -206,7 +206,7 @@ bash eval_policy.sh ${policy_name} ${task_name} ${ckpt_folder} ${gpu_id}
 # As example: bash eval_policy.sh 3D-Diffusion-Policy empty_cup_place empty_cup_place_D435_50_0 0
 ```
 
-# ğŸ‹ï¸ Submit Your Solution
+# ğŸ‹ï¸? Submit Your Solution
 
 **See [SUBMIT_YOUR_SOLUTION.md](./SUBMIT_YOUR_SOLUTION.md) for more details.**
 
@@ -235,16 +235,16 @@ submit upload --api-key YOUR_API_KEY --submission-id YOUR_SUBMISSION_ID --dir /p
 #
 # default file structure: 
 # Your-Policy
-# â”œâ”€â”€ checkpoints
-# â”‚   â””â”€â”€ __init__.py
-# â”‚   â””â”€â”€ ckpt1
-# â”‚       â””â”€â”€ ...
-# â”‚   â””â”€â”€ ckpt2
-# â”‚       â””â”€â”€ ...
-# â”œâ”€â”€ data
-# â”‚   â””â”€â”€ __init__.py
-# â”œâ”€â”€ deploy_policy.py
-# â””â”€â”€ requirement.txt or pyproject.toml
+# ©À©¤©¤ checkpoints
+# ©¦   ©¸©¤©¤ __init__.py
+# ©¦   ©¸©¤©¤ ckpt1
+# ©¦       ©¸©¤©¤ ...
+# ©¦   ©¸©¤©¤ ckpt2
+# ©¦       ©¸©¤©¤ ...
+# ©À©¤©¤ data
+# ©¦   ©¸©¤©¤ __init__.py
+# ©À©¤©¤ deploy_policy.py
+# ©¸©¤©¤ requirement.txt or pyproject.toml
 ```
 
 **This design isolates your code from the environment code, ensuring competition fairness. We believe it suffices for you to run and deploy the evaluation.**
@@ -290,5 +290,5 @@ RoboTwin: Dual-Arm Robot Benchmark with Generative Digital Twins (**early versio
 }
 ```
 
-# ğŸ·ï¸ License
+# ğŸ·ï¸? License
 This repository is released under the MIT license. See [LICENSE](./LICENSE) for additional details.
