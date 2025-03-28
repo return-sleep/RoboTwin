@@ -154,6 +154,8 @@ def main(usr_args):
     st_seed = 100000 * (1 + seed)
     suc_nums = []
     test_num = 100
+    if task_name == "classify_tactile":
+        test_num = 20
     topk = 1
     model = get_model(ckpt_folder_path, task_name)  # load model from checkpoint N files
     st_seed, suc_num, task_reward = test_policy(
@@ -249,6 +251,8 @@ def test_policy(
                     "10",
                     "-i",
                     "-",
+                    "-loglevel",
+                    "quiet",
                     "-pix_fmt",
                     "yuv420p",
                     "-vcodec",

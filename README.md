@@ -21,6 +21,7 @@ Organizers: <a href="https://yaomarkmu.github.io/">Yao Mu</a>, <a href="https://
 
 
 # 👌 Important Updates
+* **2025.03.28**, We have released tactile code, please follow the [Install.md](./INSTALL.md). **Please run `script/_download_assets.sh` again**, we have updated the assets for tactile manipulation, which does not affect the rigid object manipulation part.
 * **2025.03.20**, We've done the online briefing and released the code. The tactile task code is still pending release.
 
 # Installation
@@ -62,7 +63,7 @@ bash run_task.sh ${task_name} ${gpu_id}
 
 Data collection configurations are located in the `config` folder, corresponding to each task. 
 
-The most important setting is `head_camera_type` (default is `D435`), which directly affects the visual observation collected. This setting indicates the type of camera for the head camera, and it is aligned with the real machine. You can see its configuration in `task_config/_camera_config.yml`.
+For the official evaluation, all cameras are designated as D435, and the point cloud is downsampled to 1024 by default. You can see its configuration in `task_config/_camera_config.yml`.
 
 ## 3. Deploy your policy
 
@@ -100,9 +101,9 @@ def encode_obs(observation): # Post-Process Observation
     # ...
     return obs
 
-def get_model(ckpt_file_path, task_name): # keep 
-    print('Ckpt_File_Path: ', ckpt_file_path)
-    return Your_Policy(ckpt_file_path, task_name) # load your model
+def get_model(ckpt_folder, task_name): # keep 
+    print('ckpt_folder: ', ckpt_folder)
+    return Your_Policy(ckpt_folder, task_name) # load your model
 
 def eval(TASK_ENV, model, observation):
     '''
@@ -127,29 +128,35 @@ def reset_model(model): # Clean the model cache at the beginning of every evalua
     pass
 ```
 
-Finally, run the script in the root directory using the command `bash eval_policy.sh ${policy_name} ${task_name} ${ckpt_file_path}` to evaluate your model's performance on specific tasks.
+Finally, run the script in the root directory using the command `bash eval_policy.sh ${policy_name} ${task_name} ${ckpt_folder_path} ${gpu_id}` to evaluate your model's performance on specific tasks.
 
 Here is what each parameter means:
 - `${policy_name}`: Name of your policy's folder within the `policy` directory, default as `Your-Policy`.
 - `${task_name}`: Name of the task for evaluation.
-- `${ckpt_file_path}`: Relative path of your checkpoint file concerning the `policy/${policy_name}/checkpoints` folder. Our code will convert this relative path to an absolute one and pass it to the `get_model` function for model loading.
+- `${ckpt_folder}`: Relative path of your checkpoint folder concerning the `policy/${policy_name}/checkpoints` folder. Our code will convert this relative path to an absolute one and pass it to the `get_model` function for model loading.
 
 Please note that you should not modify this script. The parameters provided are sufficient for model loading and evaluation.
 
 ```
 # eval_policy.sh
+export VISION_TACTILE_ON=0
+
 DEBUG=False
 
 policy_name=${1}
 task_name=${2}
-ckpt_file_path=${3}
-gpu_id=... # TODO
+ckpt_folder=${3}
+gpu_id=${4}
 head_camera_type="D435"
 
 export HYDRA_FULL_ERROR=1
 export CUDA_VISIBLE_DEVICES=${gpu_id}
 
-python ./script/eval_policy.py "$task_name" "$head_camera_type" "$policy_name" "$ckpt_file_path"
+if [ ${task_name} == "classify_tactile" ]; then
+    export VISION_TACTILE_ON=1
+fi
+
+python ./script/eval_policy.py "$task_name" "$head_camera_type" "$policy_name" "$ckpt_folder"   
 ```
 
 # Baselines
@@ -170,8 +177,8 @@ python script/pkl2zarr_dp.py ${task_name} ${head_camera_type} ${expert_data_num}
 
 Then, move to `policy/Diffusion-Policy` first, and run the following code to train DP. The model will be trained for 300 epochs:
 ```
-bash train.sh ${policy_name} ${task_name} ${ckpt_name} ${gpu_id}
-# As example: bash eval_policy.sh Diffusion-Policy empty_cup_place test/300.ckpt 0
+bash train.sh ${task_name} ${expert_data_num} ${seed} ${gpu_id}
+# As example: bash train.sh empty_cup_place 100 0 0
 ```
 
 Run the following code in the Project Root to evaluate DP for a specific task for 100 times:
@@ -276,6 +283,10 @@ At initialization, the three bowls will be randomly placed on the desk. The goal
 ### classify_tactile (Tactile)
 
 At initialization, a object will be place on the desk, along with two mat(red and green). The object will be one of the following two: a rectangular cuboid or a 25-sided prism. The object may be on the left hand side or right hand side. You are encouraged to identify which type the object is. If it is a rectangular cuboid, place it on the red mat; otherwise, place it on the green mat. This is worth 5 points as bonus.
+
+# 🔗 Official WeChat Group QR Code
+
+<img src="./files/wechat-group.jpg" alt="wechat-group" style="width:30%;">
 
 # 👍 Citation
 If you find our work useful, please consider citing:

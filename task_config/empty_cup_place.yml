@@ -17,8 +17,8 @@ data_type:
   rgb: true
   observer: false
   depth: true
-  pointcloud: false
-  endpose: false
+  pointcloud: true
+  endpose: true
   qpos: true
   mesh_segmentation: false
   actor_segmentation: false
