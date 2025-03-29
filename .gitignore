@@ -54,3 +54,6 @@ policy/RDT/model_config/*
 policy/ACT-DP-TP/misc/*
 *.ipynb
 policy/ACT-DP-TP-old/*
+policy/ACT-DP-TP-Policy/misc/*
+policy/ACT-DP-TP-Policy/data_zarr/*
+policy/ACT-DP-TP-Policy/Cosmos-Tokenizer/pretrained_ckpts/*
