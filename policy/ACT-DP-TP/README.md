@@ -14,3 +14,7 @@ pip install -e .
 cd policy/ACT-DP-TP
 bash scripts/act_dp_tp/train.sh bottle_adjust 300 20 20 0
 ```
+### ICCV2025 Version
+```
+git checkout ICCV25
+```
