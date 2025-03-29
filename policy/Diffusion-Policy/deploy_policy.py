@@ -11,7 +11,7 @@ import os
 class DP:
     def __init__(self, ckpt_folder: str):
         ckpt_file = os.path.join(ckpt_folder, "300.ckpt")
-        self.policy = self.get_policy(ckpt_file, None, "cuda:0")
+        self.policy = self.get_policy(ckpt_file, None, "cuda:0")  # load policy
         self.runner = DPRunner(output_dir=None)
 
     def update_obs(self, observation):

@@ -63,7 +63,7 @@ def main(usr_args):
     policy_name = usr_args.policy_name
     ckpt_folder_path = os.path.join(
         f"./policy/{policy_name}/checkpoints/", usr_args.ckpt_folder
-    )
+    )  # subfolder under checkpoints
     save_dir = Path(f"eval_result/{policy_name}/{task_name}")
     video_save_dir = None
     video_size = None

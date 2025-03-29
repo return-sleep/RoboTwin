@@ -20,7 +20,7 @@ backbone=resnet18
 echo "Processing $task_name"
 python3 train_policy_robotwin.py \
         --task_name  $task_name \
-        --ckpt_dir checkpoints/$task_name/act_noaug_${chunk_size}_${lr_schedule_type}/seed_$seed \
+        --ckpt_dir checkpoints/$task_name/act/${chunk_size}_${lr_schedule_type}/seed_$seed/num_epochs_$num_epochs \
         --policy_class ACT --hidden_dim 512 --batch_size 256  --dim_feedforward 3200 \
         --chunk_size $chunk_size \
         --num_epochs $num_epochs \

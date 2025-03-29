@@ -57,3 +57,4 @@ policy/ACT-DP-TP-old/*
 policy/ACT-DP-TP-Policy/misc/*
 policy/ACT-DP-TP-Policy/data_zarr/*
 policy/ACT-DP-TP-Policy/Cosmos-Tokenizer/pretrained_ckpts/*
+policy/ACT-DP-TP/scripts/act_dp_tp/.nfs00000009187bb01500000009

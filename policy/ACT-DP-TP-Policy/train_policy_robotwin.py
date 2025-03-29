@@ -805,6 +805,9 @@ if __name__ == "__main__":
         args.token_dim = 16
 
     os.makedirs(args.ckpt_dir, exist_ok=True)
+    args.camera_names = CAMERA_NAMES
+    args.image_height = 240
+    args.image_width = 320
     with open(os.path.join(args.ckpt_dir, "train_args_config.json"), "w") as json_file:
         json.dump(vars(args), json_file, indent=4)
 

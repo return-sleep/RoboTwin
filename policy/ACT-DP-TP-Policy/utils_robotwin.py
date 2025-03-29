@@ -9,6 +9,108 @@ import math
 from torch.nn.modules.batchnorm import _BatchNorm
 from collections import OrderedDict
 from torch.optim.lr_scheduler import LambdaLR
+import torch.nn as nn
+from torch.nn import functional as F
+
+_UINT8_MAX_F = float(torch.iinfo(torch.uint8).max)
+
+
+def normalize_data(action_data, stats, norm_type, data_type="action"):
+
+    if norm_type == "minmax":
+        action_max = torch.from_numpy(stats[data_type + "_max"]).float().cuda()
+        action_min = torch.from_numpy(stats[data_type + "_min"]).float().cuda()
+        action_data = (action_data - action_min) / (action_max - action_min) * 2 - 1
+    elif norm_type == "gaussian":
+        action_mean = torch.from_numpy(stats[data_type + "_mean"]).float().cuda()
+        action_std = torch.from_numpy(stats[data_type + "_std"]).float().cuda()
+        action_data = (action_data - action_mean) / action_std
+    return action_data
+
+
+def tensor2numpy(input_tensor: torch.Tensor, range_min: int = -1) -> np.ndarray:
+    """Converts tensor in [-1,1] to image(dtype=np.uint8) in range [0..255].
+
+    Args:
+        input_tensor: Input image tensor of Bx3xHxW layout, range [-1..1].
+    Returns:
+        A numpy image of layout BxHxWx3, range [0..255], uint8 dtype.
+    """
+    if range_min == -1:
+        input_tensor = (input_tensor.float() + 1.0) / 2.0
+    ndim = input_tensor.ndim
+    output_image = input_tensor.clamp(0, 1).cpu().numpy()
+    output_image = output_image.transpose((0,) + tuple(range(2, ndim)) + (1,))
+    return (output_image * _UINT8_MAX_F + 0.5).astype(np.uint8)
+
+
+def kl_divergence(mu, logvar):
+    batch_size = mu.size(0)
+    assert batch_size != 0
+    if mu.data.ndimension() == 4:
+        mu = mu.view(mu.size(0), mu.size(1))
+    if logvar.data.ndimension() == 4:
+        logvar = logvar.view(logvar.size(0), logvar.size(1))
+
+    klds = -0.5 * (1 + logvar - mu.pow(2) - logvar.exp())
+    total_kld = klds.sum(1).mean(0, True)
+    dimension_wise_kld = klds.mean(0)
+    mean_kld = klds.mean(1).mean(0, True)
+
+    return total_kld, dimension_wise_kld, mean_kld
+
+
+class RandomShiftsAug(nn.Module):
+    def __init__(self, pad_h, pad_w):
+        super().__init__()
+        self.pad_h = pad_h
+        self.pad_w = pad_w
+        print(f"RandomShiftsAug: pad_h {pad_h}, pad_w {pad_w}")
+
+    def forward(self, x):
+        orignal_shape = x.shape
+        n, h, w = x.shape[0], x.shape[-2], x.shape[-1]  # n,T,M,C,H,W
+        x = x.view(n, -1, h, w)  # n,T*M*C,H,W
+        padding = (
+            self.pad_w,
+            self.pad_w,
+            self.pad_h,
+            self.pad_h,
+        )  # left, right, top, bottom padding
+        x = F.pad(x, padding, mode="replicate")
+
+        h_pad, w_pad = h + 2 * self.pad_h, w + 2 * self.pad_w
+        eps_h = 1.0 / h_pad
+        eps_w = 1.0 / w_pad
+
+        arange_h = torch.linspace(
+            -1.0 + eps_h, 1.0 - eps_h, h_pad, device=x.device, dtype=x.dtype
+        )[:h]
+        arange_w = torch.linspace(
+            -1.0 + eps_w, 1.0 - eps_w, w_pad, device=x.device, dtype=x.dtype
+        )[:w]
+
+        arange_h = arange_h.unsqueeze(1).repeat(1, w).unsqueeze(2)  # h w 1
+        arange_w = arange_w.unsqueeze(1).repeat(1, h).unsqueeze(2)  # w h 1
+
+        # print(arange_h.shape, arange_w.shape)
+        base_grid = torch.cat([arange_w.transpose(1, 0), arange_h], dim=2)  # [H, W, 2]
+        base_grid = base_grid.unsqueeze(0).repeat(
+            n, 1, 1, 1
+        )  # Repeat for batch [B, H, W, 2]
+
+        shift_h = torch.randint(
+            0, 2 * self.pad_h + 1, size=(n, 1, 1, 1), device=x.device, dtype=x.dtype
+        ).float()
+        shift_w = torch.randint(
+            0, 2 * self.pad_w + 1, size=(n, 1, 1, 1), device=x.device, dtype=x.dtype
+        ).float()
+        shift_h *= 2.0 / h_pad
+        shift_w *= 2.0 / w_pad
+
+        grid = base_grid + torch.cat([shift_w, shift_h], dim=3)
+        x = F.grid_sample(x, grid, padding_mode="zeros", align_corners=False)
+        return x.view(orignal_shape)
 
 
 class EMAModel:
