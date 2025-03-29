@@ -547,8 +547,8 @@ def forward_pass(config, data, policy, stats=None, is_training=True, downsample_
             is_pad,
             future_imgs_data,
             is_pad_img,
-            is_training,
-        )  # ,is_training TODO remove None
+            is_training,  # aug or not
+        )
 
 
 if __name__ == "__main__":
