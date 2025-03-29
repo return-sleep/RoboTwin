@@ -21,7 +21,7 @@ echo "Processing $task_name"
 python3 train_policy_robotwin.py \
     --task_name  $task_name \
     --ckpt_dir checkpoints/$task_name/act_dp_${chunk_size}_${lr_schedule_type}/seed_$seed \
-    --policy_class ACT_diffusion --hidden_dim 512 --batch_size 256  --dim_feedforward 3200 \
+    --policy_class ACT_diffusion --hidden_dim 512 --batch_size 32  --dim_feedforward 3200 \
     --chunk_size $chunk_size --disable_vae_latent \
     --num_epochs $num_epochs  \
     --norm_type minmax --seed $seed \

@@ -28,3 +28,4 @@ policy/ACT-DP-TP/Cosmos-Tokenizer/pretrained_ckpts*
 policy/ACT-DP-TP/checkpoints/*
 policy/ACT-DP-TP/data_zarr/*
 policy/ACT-DP-TP/misc/*
+policy/ACT-DP-TP-Policy/*
