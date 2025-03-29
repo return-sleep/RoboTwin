@@ -51,3 +51,6 @@ curobo/*
 ./get_video.py
 **/.DS_Store
 policy/RDT/model_config/*
+policy/ACT-DP-TP/misc/*
+*.ipynb
+policy/ACT-DP-TP-old/*
