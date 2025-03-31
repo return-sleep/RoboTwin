@@ -209,6 +209,7 @@ class EMAModel:
 
 class EpisodicDataset_Unified(torch.utils.data.Dataset):
     """
+    only for head_camera
     Args:
         norm_stats: normalization stats for qpos and action
         chunksize: chunk size
@@ -791,22 +792,36 @@ def extract_and_save_subset(data_dir, task_name, head_camera_type, num_episodes=
 
 
 if __name__ == "__main__":
-    # task_name = 'dual_bottles_pick_hard'
-    # head_camera_type = 'D435'
-    # num_episodes = 20
-    # train_ratio = 0.9
-    # batch_size_train = 32 # 2 min for dataloader
-    # batch_size_val = 32
-    # chunk_size = 100
-    # history_step = 0
-    # predict_frame = 0
-    # temporal_downsample_rate = 5
-    # predict_only_last = False
-    # distributed = False
-    # DATA_DIR = 'data_zarr' # TODO: change this to the path of the zarr files
-    # train_dataloader, val_dataloader, train_sampler, stats = load_data_unified(DATA_DIR,task_name, head_camera_type, num_episodes, train_ratio, batch_size_train, batch_size_val, chunk_size, history_step, predict_frame, temporal_downsample_rate, predict_only_last, distributed)
-    # print('Train dataloader:', len(train_dataloader))
-    # print('Val dataloader:', len(val_dataloader))
+    task_name = "dual_bottles_pick_hard"
+    head_camera_type = "D435"
+    num_episodes = 20
+    train_ratio = 0.9
+    batch_size_train = 32  # 2 min for dataloader
+    batch_size_val = 32
+    chunk_size = 100
+    history_step = 0
+    predict_frame = 0
+    temporal_downsample_rate = 5
+    predict_only_last = False
+    distributed = False
+    DATA_DIR = "data_zarr"  # TODO: change this to the path of the zarr files
+    train_dataloader, val_dataloader, train_sampler, stats = load_data_unified(
+        DATA_DIR,
+        task_name,
+        head_camera_type,
+        num_episodes,
+        train_ratio,
+        batch_size_train,
+        batch_size_val,
+        chunk_size,
+        history_step,
+        predict_frame,
+        temporal_downsample_rate,
+        predict_only_last,
+        distributed,
+    )
+    print("Train dataloader:", len(train_dataloader))
+    print("Val dataloader:", len(val_dataloader))
     # import time
     # from tqdm import tqdm
     # start_time = time.time()
@@ -814,12 +829,26 @@ if __name__ == "__main__":
     #     print(image_data.max(), image_data.min()) # 0~1
     #     # print(image_data.shape, qpos_data.shape, action_data.shape, is_pad.shape)
     #     break
-    # for i, (image_data, qpos_data, action_data, is_pad, future_imgs_data, is_pad_img) in enumerate(train_dataloader):
-    #     print(image_data.shape, qpos_data.shape, action_data.shape, is_pad.shape, future_imgs_data.shape, is_pad_img.shape)
-    #     break
+    for i, (
+        image_data,
+        qpos_data,
+        action_data,
+        is_pad,
+        future_imgs_data,
+        is_pad_img,
+    ) in enumerate(train_dataloader):
+        print(
+            image_data.shape,
+            qpos_data.shape,
+            action_data.shape,
+            is_pad.shape,
+            future_imgs_data.shape,
+            is_pad_img.shape,
+        )
+        break
 
-    data_dir = "data_zarr"
-    camera_type = "D435"
-    task_name = "dual_bottles_pick_easy"
-    num_episodes = 20
-    extract_and_save_subset(data_dir, task_name, camera_type, num_episodes)
+    # data_dir = "data_zarr"
+    # camera_type = "D435"
+    # task_name = "dual_bottles_pick_easy"
+    # num_episodes = 20
+    # extract_and_save_subset(data_dir, task_name, camera_type, num_episodes)

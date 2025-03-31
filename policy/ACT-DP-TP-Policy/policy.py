@@ -497,12 +497,17 @@ class ACTPolicyDiffusion_with_Token_Prediction(nn.Module):
 
         # image tokenization ; another image normalization for resnet
         current_image_norm = self.normalize(
-            image[:, 0:1]
-        )  # B 1 N C H W image[:, self.history_steps,self.history_steps+1]
-        # only compress current and future frames image[:, self.history_steps:,:]
+            image[:, 0 : self.history_steps + 1]  # image[:, 0:1]
+        )  # B 1 N C H W TODO image[:, self.history_steps,self.history_steps+1]
+        # TOOD only compress current and future frames image[:, self.history_steps:,:]
         image_tokens = self.get_visual_token(
-            image[..., :: self.resize_rate, :: self.resize_rate]  # resize future frame
-        )  # B T/t + 1 N D H' W' including history_steps+1+predict_frame
+            image[
+                :, self.history_steps :, :, :, :: self.resize_rate, :: self.resize_rate
+            ]  # resize future frame
+        )  # B T+1 N C H W
+        # image_tokens = self.get_visual_token(
+        #     image[..., :: self.resize_rate, :: self.resize_rate]  # resize future frame
+        # )  # B T/t + 1 N D H' W' including history_steps+1+predict_frame
         current_image_tokens = image_tokens[:, 0:1]  # B 1 N D H' W'
         future_image_tokens = image_tokens[:, 1:]  # B T N D H' W'
         self.image_tokens_shape = future_image_tokens.shape  # B T N D H' W'
@@ -519,13 +524,13 @@ class ACTPolicyDiffusion_with_Token_Prediction(nn.Module):
         )  # future image token
         # use detr-diffusion model to predict actions & image tokens
         a_hat, is_pad_hat, pred_token, (mu, logvar) = self.model(
-            qpos,
-            (current_image_norm, current_image_tokens),
+            qpos,  # B his+1 D
+            (current_image_norm, current_image_tokens),  # B 1 N C H W
             env_state,
-            actions,
+            actions,  # B T D
             is_pad,
-            noisy_actions,
-            noise_tokens,
+            noisy_actions,  # B T D
+            noise_tokens,  # B T' N_view D H' W'
             is_tokens_pad,
             denoise_steps=timesteps,
         )
