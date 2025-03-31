@@ -1,2 +1,6 @@
 !Your-Policy/data/*
 !Your-Policy/checkpoints/*
+policy/ACT-DP-TP-Policy/checkpoints/*
+policy/ACT-DP-TP-Policy/checkpoints
+policy/ACT-DP-TP-Policy/data_zarr
+policy/ACT-DP-TP-Policy/data_zarr/*
