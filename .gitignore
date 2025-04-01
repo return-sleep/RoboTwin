@@ -62,3 +62,4 @@ data/*
 data
 policy/ACT-DP-TP-Policy/checkpoints
 policy/ACT-DP-TP-Policy/data_zarr
+data_generate.sh
