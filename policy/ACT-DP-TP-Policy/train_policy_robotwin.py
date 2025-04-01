@@ -10,7 +10,7 @@ import torch.multiprocessing as mp
 import builtins
 import torch.distributed as dist
 import wandb
-from utils_robotwin import load_data_unified
+from utils_robotwin import load_data_unified_multiview
 from utils_robotwin import compute_dict_mean, set_seed, detach_dict
 from utils_robotwin import plot_history, create_multiview_video
 from utils_robotwin import (
@@ -32,7 +32,8 @@ e = IPython.embed
 # Global variables
 current_dir = os.path.abspath(os.path.dirname(__file__))
 DATA_DIR = os.path.join(current_dir, "data_zarr")
-CAMERA_NAMES = ["head_camera"]
+DATA_DIR = '/attached/remote-home2/xhl/8_kaust_pj/RoboTwin/data/data_zarr'
+CAMERA_NAMES = ["head_camera","front_camera","left_camera", "right_camera"]
 
 
 def main_worker(gpu, ngpus_per_node, args):
@@ -99,7 +100,7 @@ def main_worker(gpu, ngpus_per_node, args):
 
     # get task parameters
     dataset_dir = DATA_DIR
-    camera_names = CAMERA_NAMES
+    camera_names = CAMERA_NAMES if args['disable_multi_view'] == False else [CAMERA_NAMES[0]]
     head_camera_type = args["head_camera_type"]
     num_episodes = args["num_episodes"]
     disable_vae_latent = args["disable_vae_latent"]
@@ -215,11 +216,12 @@ def main_worker(gpu, ngpus_per_node, args):
     #######################  load data ############################
     print("####################### Step 1: get dataloader #######################")
     distributed = config["world-size"] > 1 or config["multiprocessing-distributed"]
-    train_dataloader, val_dataloader, train_sampler, stats = load_data_unified(
+    train_dataloader, val_dataloader, train_sampler, stats = load_data_unified_multiview(
         dataset_dir,
         task_name,
         head_camera_type,
         num_episodes,
+        camera_names,
         args["train_ratio"],
         batch_size_train,
         batch_size_val,
@@ -458,13 +460,15 @@ def train_bc(train_dataloader, val_dataloader, config, train_sampler=None, stats
                     wandb.log({"Train/" + k: v.item()})
             print(summary_string)
             print("lr:", optimizer.param_groups[0]["lr"])
-
+            if epoch % 10 == 0 and epoch > 0:
+                plot_history(train_history, validation_history, epoch, ckpt_dir, seed)
+            
             if epoch % config["policy_config"]["save_epoch"] == 0 and epoch > 0:
                 ckpt_path = os.path.join(
                     ckpt_dir, f"policy_epoch_{epoch}_seed_{seed}.ckpt"
                 )
                 torch.save(policy.state_dict(), ckpt_path)
-                plot_history(train_history, validation_history, epoch, ckpt_dir, seed)
+                
 
             lastest_ckpt = {
                 "epoch": epoch,
@@ -540,6 +544,8 @@ def forward_pass(config, data, policy, stats=None, is_training=True, downsample_
         qpos_data = qpos_data[:, -1]  # B, N , C, H, W
         return policy(qpos_data, image_data, action_data, is_pad, is_training)  #
     else:
+        # print('image_data.shape,future_imgs_data.shape')
+        # print(image_data.shape,future_imgs_data.shape)
         return policy(
             qpos_data,
             image_data,
@@ -582,7 +588,7 @@ if __name__ == "__main__":
         "--num_episodes", default=100, type=int, help="num_epochs", required=False
     )
     parser.add_argument(
-        "--train_ratio", default=0.9, type=float, help="train_ratio", required=False
+        "--train_ratio", default=0.99, type=float, help="train_ratio", required=False
     )
     parser.add_argument(
         "--batch_size", default=64, type=int, help="batch_size", required=False
@@ -641,6 +647,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--predict_only_last", action="store_true"
     )  # only predict the last #predict_frame frame
+    parser.add_argument(
+        "--disable_multi_view", action="store_true"
+    ) # if args['disable_multi_view'] == False else [CAMERA_NAMES[0]]
     parser.add_argument(
         "--hidden_dim",
         action="store",
@@ -805,7 +814,8 @@ if __name__ == "__main__":
         args.token_dim = 16
 
     os.makedirs(args.ckpt_dir, exist_ok=True)
-    args.camera_names = CAMERA_NAMES
+    # add extra parameters
+    args.camera_names = CAMERA_NAMES if args.disable_multi_view == False else [CAMERA_NAMES[0]]
     args.image_height = 240
     args.image_width = 320
     with open(os.path.join(args.ckpt_dir, "train_args_config.json"), "w") as json_file:
@@ -840,80 +850,4 @@ if __name__ == "__main__":
         # main_worker(args.gpu, ngpus_per_node, args)
         main_worker(args.gpu, ngpus_per_node, args)
 
-    # sbatch eval scripted
-    import subprocess
-
-    # if args.policy_class == 'ACT':
-    #     subprocess.run([
-    #     "sbatch",
-    #     "script/act/eval.sh", #TODO change to eval.sh PATH and hyperparameters
-    #     str(args.task_name),
-    #     str(args.chunk_size),
-    #     str(args.seed),
-    #     str(args.lr_schedule_type)
-    # ])
-    # elif args.policy_class == 'ACT_diffusion':
-    #     subprocess.run([
-    #     "sbatch",
-    #     "script/act_dp/eval.sh", #TODO change to eval.sh PATH and hyperparameters
-    #     str(args.task_name),
-    #     str(args.chunk_size),
-    #     str(args.seed),
-    #     str(args.lr_schedule_type)
-    # ])
-    #  ACT_diffusion_tp/ACT_diffusion_pp
-
-    # if args.policy_class == 'ACT_diffusion_tp' and args.num_episodes == 100:
-    #     subprocess.run([
-    #     "sbatch",
-    #     "script/act_dp_tp/eval_causal.sh", #TODO change to eval.sh PATH and hyperparameters
-    #     str(args.task_name),
-    #     str(args.num_epochs), # error
-    #     str(args.chunk_size),
-    #     str(args.seed),
-    #     str(args.lr_schedule_type),
-    #     str(args.predict_frame),
-    #     str(args.temporal_downsample_rate),
-    #     str(args.tokenizer_model_temporal_rate),
-    #     ])
-
-    if (
-        args.policy_class == "ACT_diffusion_tp"
-        and args.predict_only_last
-        and args.predict_frame > 1
-    ):
-        subprocess.run(
-            [
-                "sbatch",
-                "script/act_dp_tp/eval_last.sh",  # TODO change to eval.sh PATH and hyperparameters
-                str(args.task_name),
-                str(args.chunk_size),
-                str(args.predict_frame),
-                str(args.seed),
-            ]
-        )
-    elif args.policy_class == "ACT_diffusion_tp" and args.predict_frame == 1:
-        subprocess.run(
-            [
-                "sbatch",
-                "script/act_dp_tp/eval_next.sh",  # TODO change to eval.sh PATH and hyperparameters
-                str(args.task_name),
-                str(args.chunk_size),
-                str(args.seed),
-            ]
-        )
-    elif args.policy_class == "ACT_diffusion_tp":
-        subprocess.run(
-            [
-                "sbatch",
-                "script/act_dp_tp/eval.sh",  # TODO change to eval.sh PATH and hyperparameters
-                str(args.task_name),
-                str(args.num_epochs),  # error
-                str(args.chunk_size),
-                str(args.seed),
-                str(args.lr_schedule_type),
-                str(args.predict_frame),
-                str(args.temporal_downsample_rate),
-                str(args.tokenizer_model_temporal_rate),
-            ]
-        )
+   

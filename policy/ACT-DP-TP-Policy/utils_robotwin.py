@@ -239,7 +239,7 @@ class EpisodicDataset_Unified(torch.utils.data.Dataset):
         predict_only_last=False,
     ):
         super(EpisodicDataset_Unified).__init__()
-        self.head_camera = head_camera
+        self.head_camera = head_camera # T H W C 
         self.state = state
         self.action = action
         self.episode_ends = episode_ends
@@ -343,6 +343,141 @@ class EpisodicDataset_Unified(torch.utils.data.Dataset):
 
         return image_data, qpos_data, action_data, is_pad, future_imgs_data, is_pad_img
 
+
+class EpisodicDataset_Unified_Multiview(torch.utils.data.Dataset):
+    """
+    only for head_camera
+    Args:
+        norm_stats: normalization stats for qpos and action
+        chunksize: chunk size
+        history_steps: number of history steps
+        predict_frame: number of future frames to predict
+    Output:
+        A unified dataset for all the datasets
+        image_data [0~1]: history_steps+1 Num_view C H W
+        qpos_data [normalized]: history_steps+1 D
+        action_data [raw]: chunk_size D
+        is_pad: chunk_size
+        future_imgs_data [0~1]: predict_frame Num_view C H W
+        is_pad_img : predict_frame
+    """
+
+    def __init__(
+        self,
+        head_camera,
+        state,
+        action,
+        episode_ends,
+        stats,
+        chunk_size=50,
+        history_steps=0,
+        predict_frame=0,
+        temporal_downsample_rate=1,
+        predict_only_last=False,
+    ):
+        super(EpisodicDataset_Unified_Multiview).__init__()
+        self.head_camera = head_camera # T H W C 
+        self.state = state
+        self.action = action
+        self.episode_ends = episode_ends
+        self.norm_stats = stats
+        self.chunk_size = chunk_size
+        self.history_steps = history_steps
+        self.predict_frame = predict_frame
+        self.temporal_downsample_rate = temporal_downsample_rate
+        self.predict_only_last = predict_only_last
+
+    def __len__(self):
+        return len(self.head_camera)
+
+    def _get_episode_idx(self, idx):
+        for i, end_idx in enumerate(self.episode_ends):
+            if idx < end_idx:
+                start_idx = self.episode_ends[i - 1] if i > 0 else 0
+                end_idx = end_idx
+                return start_idx, end_idx
+
+    def __getitem__(self, index):
+        start_idx, end_idx = self._get_episode_idx(index)
+        index = min(index, end_idx - 2)  # Avoid the last index of episode
+        # get observation qpos and image data
+        past_start_ts = max(start_idx, index - self.history_steps)
+        past_padding_needed = self.history_steps - (index - past_start_ts)
+        obs_qpos = self.state[past_start_ts : index + 1]
+        obs_img = self.head_camera[past_start_ts : index + 1] # his+1 N_view 3 H W 
+        if past_padding_needed > 0:
+            padding_qpos = np.tile(self.state[start_idx], (past_padding_needed, 1))
+            padding_image = np.tile(
+                self.head_camera[start_idx], (past_padding_needed, 1, 1, 1, 1)
+            )
+            obs_qpos = np.concatenate([padding_qpos, obs_qpos], axis=0)
+            obs_img = np.concatenate(
+                [padding_image, obs_img], axis=0
+            )  # (history_steps+1, N_view, 3, H, W)
+        # get action chunk data
+        original_action_shape = (self.chunk_size, *self.action.shape[1:])
+        gt_action = np.zeros(original_action_shape)
+        action_len = min(self.chunk_size, end_idx - index - 1)
+
+        gt_action[:action_len] = self.action[
+            index + 1 : index + 1 + action_len
+        ]  # move left one step,due to action = qpos
+        is_pad = np.zeros(self.chunk_size)
+        is_pad[action_len:] = 1
+        # get future image data
+        if self.predict_frame > 0:
+            future_frames_len = min(self.predict_frame, end_idx - index - 1)
+            future_images = self.head_camera[
+                index : index + future_frames_len + 1
+            ]  # (future_frames_len+1,N_view, 3, H, W)
+            is_pad_img = np.zeros(self.predict_frame + 1)
+            future_padding_needed = self.predict_frame - future_frames_len
+
+            if future_padding_needed > 0:
+                is_pad_img[-future_padding_needed:] = 1
+                last_frame = self.head_camera[end_idx - 1]  # (N_view, 3, H, W)
+                padding_future_frames = np.broadcast_to(
+                    last_frame, (future_padding_needed, *last_frame.shape)
+                )
+                future_images = np.concatenate(
+                    [future_images, padding_future_frames], axis=0
+                )
+
+            future_images = future_images[:: self.temporal_downsample_rate][
+                1:
+            ]  # (predict_frames, 3, H, W)
+            is_pad_img = is_pad_img[:: self.temporal_downsample_rate][
+                1:
+            ]  # (predict_frames)
+
+            if self.predict_only_last:
+                future_images = future_images[-1:]
+                is_pad_img = is_pad_img[-1:]
+
+        # construct observations
+        image_data = (
+            torch.from_numpy(obs_img).float()
+        )  # (history_steps+1, N_view,, 3, H, W) add num_view
+        qpos_data = torch.from_numpy(obs_qpos).float()
+        action_data = torch.from_numpy(gt_action).float()
+        is_pad = torch.from_numpy(is_pad).bool()
+        if self.predict_frame > 0:
+            future_imgs_data = torch.from_numpy(future_images).float() # TODO fixed single view?
+            is_pad_img = torch.from_numpy(is_pad_img).bool()
+        else:
+            future_imgs_data = 0
+            is_pad_img = 0
+
+        # normalize image and change dtype to float
+        image_data = image_data / 255.0  # history_steps+1 N C H W
+        future_imgs_data = (
+            future_imgs_data / 255.0 if future_imgs_data is not None else None
+        )
+        qpos_data = (qpos_data - self.norm_stats["qpos_mean"]) / self.norm_stats[
+            "qpos_std"
+        ]
+
+        return image_data, qpos_data, action_data, is_pad, future_imgs_data, is_pad_img
 
 def get_norm_stats(state, action):
     all_qpos_data = torch.from_numpy(np.array(state))
@@ -526,6 +661,108 @@ def load_data_unified(
 
     return train_dataloader, val_dataloader, train_sampler, stats
 
+
+def load_data_unified_multiview(
+    data_dir,
+    task_name,
+    head_camera_type,
+    num_episodes=100,
+    camera_name=['head_camra'],
+    train_ratio=0.9,
+    batch_size_train=32,
+    batch_size_val=32,
+    chunk_size=100,
+    history_step=0,
+    predict_frame=0,
+    temporal_downsample_rate=1,
+    predict_only_last=False,
+    distributed=False,
+):
+    zarr_path = os.path.join(
+        data_dir, f"{task_name}_{head_camera_type}_{num_episodes}.zarr"
+    )
+    print(f"Loading data from {zarr_path}")
+    zarr_root = zarr.open(zarr_path, mode="r")
+    # head_camera = zarr_root["data/head_camera"]
+    camera_image = []
+    for camera_name in camera_name:
+        camera_image.append(zarr_root[f"data/{camera_name}"])
+    head_camera = np.stack(camera_image, axis=1) # T N H W C
+    state = zarr_root["data/state"]
+    action = zarr_root["data/action"]
+    episode_ends = zarr_root["meta/episode_ends"]
+    stats = get_norm_stats(state, action)
+    # split the dataset
+    (
+        train_head_camera, # N_train N_view H W C
+        train_state,
+        train_action,
+        train_episode_ends,
+        val_head_camera,
+        val_state,
+        val_action,
+        val_episode_ends,
+    ) = split_episode_indices(head_camera, state, action, episode_ends, train_ratio)
+    print(
+        f"Train episodes: {len(train_episode_ends)}, Validation episodes: {len(val_episode_ends)}"
+    )
+    print(
+        f"Train samples: {train_episode_ends[-1]}, Validation samples: {val_episode_ends[-1]}"
+    )
+    # create dataset
+    train_dataset = EpisodicDataset_Unified_Multiview(
+        train_head_camera,
+        train_state,
+        train_action,
+        train_episode_ends,
+        stats,
+        chunk_size,
+        history_step,
+        predict_frame,
+        temporal_downsample_rate,
+        predict_only_last,
+    )
+    val_dataset = EpisodicDataset_Unified_Multiview(
+        val_head_camera,
+        val_state,
+        val_action,
+        val_episode_ends,
+        stats,
+        chunk_size,
+        history_step,
+        predict_frame,
+        temporal_downsample_rate,
+        predict_only_last,
+    )
+
+    if distributed:
+        print("Using distributed sampler-----------------------------")
+        train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
+        val_sampler = torch.utils.data.distributed.DistributedSampler(
+            val_dataset, shuffle=False
+        )
+    else:
+        train_sampler = None
+        val_sampler = None
+
+    train_dataloader = DataLoader(
+        train_dataset,
+        batch_size=batch_size_train,
+        shuffle=(train_sampler is None),
+        pin_memory=True,
+        num_workers=4,
+        sampler=train_sampler,
+    )
+    val_dataloader = DataLoader(
+        val_dataset,
+        batch_size=batch_size_val,
+        shuffle=False,
+        pin_memory=True,
+        num_workers=4,
+        sampler=val_sampler,
+    )
+
+    return train_dataloader, val_dataloader, train_sampler, stats
 
 ### helper functions
 def convert_weigt(obj):
@@ -792,24 +1029,27 @@ def extract_and_save_subset(data_dir, task_name, head_camera_type, num_episodes=
 
 
 if __name__ == "__main__":
-    task_name = "dual_bottles_pick_hard"
+    task_name = "dual_shoes_place"
     head_camera_type = "D435"
-    num_episodes = 20
+    num_episodes = 10
     train_ratio = 0.9
-    batch_size_train = 32  # 2 min for dataloader
-    batch_size_val = 32
+    batch_size_train = 4  # 2 min for dataloader
+    batch_size_val = 4
     chunk_size = 100
-    history_step = 0
-    predict_frame = 0
+    history_step = 1
+    predict_frame = 20
     temporal_downsample_rate = 5
     predict_only_last = False
     distributed = False
-    DATA_DIR = "data_zarr"  # TODO: change this to the path of the zarr files
-    train_dataloader, val_dataloader, train_sampler, stats = load_data_unified(
+    DATA_DIR = '/attached/remote-home2/xhl/8_kaust_pj/RoboTwin/data/data_zarr'  # TODO: change this to the path of the zarr files
+    camera_names = ["head_camera", "front_camera", "left_camera", "right_camera"]
+    # camera_names = ["head_camera"]
+    train_dataloader, val_dataloader, train_sampler, stats = load_data_unified_multiview(
         DATA_DIR,
         task_name,
         head_camera_type,
         num_episodes,
+        camera_names,
         train_ratio,
         batch_size_train,
         batch_size_val,
@@ -822,13 +1062,7 @@ if __name__ == "__main__":
     )
     print("Train dataloader:", len(train_dataloader))
     print("Val dataloader:", len(val_dataloader))
-    # import time
-    # from tqdm import tqdm
-    # start_time = time.time()
-    # for i, (image_data, qpos_data, action_data, is_pad, future_imgs_data, is_pad_img) in enumerate(tqdm(train_dataloader)):
-    #     print(image_data.max(), image_data.min()) # 0~1
-    #     # print(image_data.shape, qpos_data.shape, action_data.shape, is_pad.shape)
-    #     break
+    
     for i, (
         image_data,
         qpos_data,
@@ -838,14 +1072,56 @@ if __name__ == "__main__":
         is_pad_img,
     ) in enumerate(train_dataloader):
         print(
-            image_data.shape,
-            qpos_data.shape,
+            image_data.shape, # B his+1 N_view C H W
+            qpos_data.shape, # B his+1 14
             action_data.shape,
             is_pad.shape,
             future_imgs_data.shape,
             is_pad_img.shape,
         )
         break
+    
+    # train_dataloader, val_dataloader, train_sampler, stats = load_data_unified(
+    #     DATA_DIR,
+    #     task_name,
+    #     head_camera_type,
+    #     num_episodes,
+    #     train_ratio,
+    #     batch_size_train,
+    #     batch_size_val,
+    #     chunk_size,
+    #     history_step,
+    #     predict_frame,
+    #     temporal_downsample_rate,
+    #     predict_only_last,
+    #     distributed,
+    # )
+    # print("Train dataloader:", len(train_dataloader))
+    # print("Val dataloader:", len(val_dataloader))
+    # import time
+    # from tqdm import tqdm
+    # start_time = time.time()
+    # for i, (image_data, qpos_data, action_data, is_pad, future_imgs_data, is_pad_img) in enumerate(tqdm(train_dataloader)):
+    #     print(image_data.max(), image_data.min()) # 0~1
+    #     # print(image_data.shape, qpos_data.shape, action_data.shape, is_pad.shape)
+    #     break
+    # for i, (
+    #     image_data,
+    #     qpos_data,
+    #     action_data,
+    #     is_pad,
+    #     future_imgs_data,
+    #     is_pad_img,
+    # ) in enumerate(train_dataloader):
+    #     print(
+    #         image_data.shape,
+    #         qpos_data.shape,
+    #         action_data.shape,
+    #         is_pad.shape,
+    #         future_imgs_data.shape,
+    #         is_pad_img.shape,
+    #     )
+    #     break
 
     # data_dir = "data_zarr"
     # camera_type = "D435"

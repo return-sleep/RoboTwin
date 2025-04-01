@@ -581,6 +581,7 @@ class DETRVAE_Denoise_Token_Prediction(nn.Module):
         super().__init__()
         self.num_queries = num_queries
         self.camera_names = camera_names
+        self.future_camera_names = [camera_names[0]] # TODO attention
         self.transformer = transformer
         self.transformer_share_decoder = transformer.share_decoder
         self.predict_only_last = transformer.predict_only_last
@@ -684,8 +685,8 @@ class DETRVAE_Denoise_Token_Prediction(nn.Module):
             // self.patch_size
         )  #
         self.num_pred_token_per_timestep = (
-            self.image_h * self.image_w * len(camera_names)
-        )
+            self.image_h * self.image_w * len(self.future_camera_names)
+        ) # 
         self.token_shape = (
             self.num_temporal_token,
             self.image_h,
@@ -708,7 +709,7 @@ class DETRVAE_Denoise_Token_Prediction(nn.Module):
         )
         query_embed_token_fixed = get_nd_sincos_pos_embed_from_grid(
             hidden_dim,
-            (self.num_temporal_token, len(camera_names), self.image_h, self.image_w),
+            (self.num_temporal_token, len(self.future_camera_names), self.image_h, self.image_w),
         )
         self.query_embed_token_fixed = (
             torch.from_numpy(query_embed_token_fixed).view(-1, hidden_dim).float()
@@ -772,7 +773,7 @@ class DETRVAE_Denoise_Token_Prediction(nn.Module):
         src = torch.stack(all_cam_features, axis=-3)  # shape: batch,D,N_view, H, W
         pos = get_nd_sincos_pos_embed_from_grid(
             self.hidden_dim, src.shape[2:]
-        )  #  N_view, H, W, D numpy
+        )  #  N_view, H, W, D numpy 
         pos = (
             torch.from_numpy(pos).to(src.device).unsqueeze(0).float()
         )  # 1 N_view, H, W, D
@@ -850,7 +851,7 @@ class DETRVAE_Denoise_Token_Prediction(nn.Module):
                 pred_token,
                 "b (t n hp wp) (c ph pw) -> b t n c (hp ph) (wp pw)",
                 t=self.num_temporal_token,
-                n=len(self.camera_names),
+                n=len(self.future_camera_names), 
                 hp=self.image_h,
                 wp=self.image_w,
                 ph=self.patch_size,

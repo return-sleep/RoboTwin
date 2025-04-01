@@ -502,13 +502,13 @@ class ACTPolicyDiffusion_with_Token_Prediction(nn.Module):
         # TOOD only compress current and future frames image[:, self.history_steps:,:]
         image_tokens = self.get_visual_token(
             image[
-                :, self.history_steps :, :, :, :: self.resize_rate, :: self.resize_rate
+                :, self.history_steps :, 0:1, :, :: self.resize_rate, :: self.resize_rate
             ]  # resize future frame
         )  # B T+1 N C H W
         # image_tokens = self.get_visual_token(
         #     image[..., :: self.resize_rate, :: self.resize_rate]  # resize future frame
         # )  # B T/t + 1 N D H' W' including history_steps+1+predict_frame
-        current_image_tokens = image_tokens[:, 0:1]  # B 1 N D H' W'
+        current_image_tokens = image_tokens[:, 0:1]  # B 1 N D H' W' useless
         future_image_tokens = image_tokens[:, 1:]  # B T N D H' W'
         self.image_tokens_shape = future_image_tokens.shape  # B T N D H' W'
         # TODO can use differnent noise_scheduler for image token & actions
@@ -586,9 +586,9 @@ class ACTPolicyDiffusion_with_Token_Prediction(nn.Module):
         return loss_dict, (current_image_tokens, target_token, pred_token)
 
     def conditional_sample(self, qpos, image):
-        # qpos: B 1 D
+        # qpos: B 1 D or B D
         # image: B 1 N C H W or B N C H W
-        if len(image.shape) == 5:  # B N C H W
+        if len(image.shape) == 5:  # B N C H W single frame
             qpos = qpos.unsqueeze(1)
             image = image.unsqueeze(1)
         env_state = None
@@ -596,28 +596,11 @@ class ACTPolicyDiffusion_with_Token_Prediction(nn.Module):
         scheduler = self.noise_scheduler
         scheduler.set_timesteps(self.num_inference_steps)
         # process image observation
-        current_image_norm = self.normalize(image[:, 0:1])  # B 1 N C H W
-        # calculate token shape
-        if self.predict_only_last:
-            token_future_number = 1
-        else:  # temporal_compression = tokenizer_model_temporal_rate
-            token_future_number = math.ceil(
-                self.predict_frame
-                // self.temporal_compression
-                / self.temporal_downsample_rate
-            )
-        token_shape = (
-            self.camera_num,
-            self.token_dim,
-            self.token_h,
-            self.token_w,
-        )  # N_view D H' W'
+        current_image_norm = self.normalize(image[:, 0 : self.history_steps + 1])  # B 1 N C H W
         # initial noise action & token
         batch = image.shape[0]
         action_shape = (batch, self.num_queries, 14)
-        image_token_shape = (batch, token_future_number, *token_shape)  # B T N D H' W'
         actions = torch.randn(action_shape, device=qpos.device, dtype=qpos.dtype)
-        # tokens = torch.randn(image_token_shape, device=qpos.device,dtype=qpos.dtype) # none
         tokens = None  # TODO discard token prediction while evaluation
         for t in scheduler.timesteps:
             timesteps = torch.full((batch,), t, device=qpos.device, dtype=torch.long)
@@ -633,7 +616,6 @@ class ACTPolicyDiffusion_with_Token_Prediction(nn.Module):
                 denoise_steps=timesteps,
             )
             actions = scheduler.step(model_action_output, t, actions).prev_sample
-            # tokens = scheduler.step(model_token_output, t, tokens).prev_sample # discard token prediction while evaluation
         return actions, tokens, mu, logvar
 
     def __call__(
@@ -652,7 +634,7 @@ class ACTPolicyDiffusion_with_Token_Prediction(nn.Module):
             # print(image.shape, future_imgs.shape) B 1 N C H W & B H N C H W
             all_image = torch.cat(
                 [image, future_imgs], dim=1
-            )  # B H+1 N C H W same resize maybe just use image_sample_size
+            )  # B H+1+T' N C H W same resize maybe just use image_sample_size
             all_image = self.aug(all_image) if is_training else all_image
             loss_dict, (current_image_tokens, target_token, pred_token) = (
                 self.train_model(
@@ -688,8 +670,8 @@ class ACTPolicyDiffusion_with_Token_Prediction(nn.Module):
                 return loss_dict
 
         else:  # inference time
-            qpos = qpos  # B 1 D
-            image = image  # B 1 N C H W
+            qpos = qpos  # B 1 D or B D
+            image = image  # B 1 N C H W or B N C H W
             # print(image.shape, image.max(), image.min())
             a_hat, pred_token, _, _ = self.conditional_sample(qpos, image)
             # print('prediction action', a_hat.shape)

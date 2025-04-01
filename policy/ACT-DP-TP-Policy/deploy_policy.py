@@ -267,28 +267,11 @@ class ACTPolicyDiffusion_with_Token_Prediction(nn.Module):
         scheduler = self.noise_scheduler
         scheduler.set_timesteps(self.num_inference_steps)
         # process image observation
-        current_image_norm = self.normalize(image[:, 0:1])  # B 1 N C H W
-        # calculate token shape
-        if self.predict_only_last:
-            token_future_number = 1
-        else:  # temporal_compression = tokenizer_model_temporal_rate
-            token_future_number = math.ceil(
-                self.predict_frame
-                // self.temporal_compression
-                / self.temporal_downsample_rate
-            )
-        token_shape = (
-            self.camera_num,
-            self.token_dim,
-            self.token_h,
-            self.token_w,
-        )  # N_view D H' W'
+        current_image_norm = self.normalize(image[:, 0 : self.history_steps + 1])  # B his+1 N C H W
         # initial noise action & token
         batch = image.shape[0]
         action_shape = (batch, self.num_queries, 14)
-        image_token_shape = (batch, token_future_number, *token_shape)  # B T N D H' W'
         actions = torch.randn(action_shape, device=qpos.device, dtype=qpos.dtype)
-        # tokens = torch.randn(image_token_shape, device=qpos.device,dtype=qpos.dtype) # none
         tokens = None  # TODO discard token prediction while evaluation
         for t in scheduler.timesteps:
             timesteps = torch.full((batch,), t, device=qpos.device, dtype=torch.long)
@@ -304,7 +287,6 @@ class ACTPolicyDiffusion_with_Token_Prediction(nn.Module):
                 denoise_steps=timesteps,
             )
             actions = scheduler.step(model_action_output, t, actions).prev_sample
-            # tokens = scheduler.step(model_token_output, t, tokens).prev_sample # discard token prediction while evaluation
         return actions, tokens, mu, logvar
 
     def __call__(
@@ -322,9 +304,7 @@ class ACTPolicyDiffusion_with_Token_Prediction(nn.Module):
         # inference time
         qpos = qpos  # B 1 D
         image = image  # B 1 N C H W
-        # print(image.shape, image.max(), image.min())
         a_hat, pred_token, _, _ = self.conditional_sample(qpos, image)
-        # print('prediction action', a_hat.shape)
         return a_hat  # B H D
 
     # For ROBOTWIN
@@ -340,10 +320,7 @@ class ACTPolicyDiffusion_with_Token_Prediction(nn.Module):
             assert camera_name in obs, f"camera {camera_name} not in obs"
             camera_image = torch.from_numpy(obs[camera_name]).float().cuda()
             image_data_list.append(camera_image)
-        image_data = torch.stack(image_data_list, dim=0).unsqueeze(0)  # N C H W
-        # image_data = (
-        #     torch.from_numpy(obs["head_cam"]).unsqueeze(0).unsqueeze(0).float().cuda()
-        # )  # B 1 C H W 0~1
+        image_data = torch.stack(image_data_list, dim=0).unsqueeze(0)  # B=1 N C H W
         obs_qpos = torch.from_numpy(obs["agent_pos"]).unsqueeze(0).float().cuda()  # B D
         qpos_data = normalize_data(
             obs_qpos, self.stats, "gaussian", data_type="qpos"
@@ -360,7 +337,7 @@ class ACTPolicyDiffusion_with_Token_Prediction(nn.Module):
     def get_action(self):
         stacked_obs_image = torch.stack(
             list(self.obs_image), dim=1
-        )  # 1 n+1 1 3 H W raw
+        )  # 1 n+1 1 3 H W raw time dimension
         stacked_obs_qpos = torch.stack(list(self.obs_qpos), dim=1)  # 1 n+1 14
         a_hat = (
             self(stacked_obs_qpos, stacked_obs_image).detach().cpu().numpy()
