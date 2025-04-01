@@ -33,7 +33,7 @@ e = IPython.embed
 current_dir = os.path.abspath(os.path.dirname(__file__))
 DATA_DIR = os.path.join(current_dir, "data_zarr")
 DATA_DIR = '/attached/remote-home2/xhl/8_kaust_pj/RoboTwin/data/data_zarr'
-DATA_DIR = '/media/xuhuilin/Ubuntu_Data/0_project/0_bimanual/RoboTwin/data/data_zarr'
+# DATA_DIR = '/media/xuhuilin/Ubuntu_Data/0_project/0_bimanual/RoboTwin/data/data_zarr'
 CAMERA_NAMES = ["head_camera","front_camera","left_camera", "right_camera"]
 
 
