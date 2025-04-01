@@ -28,7 +28,7 @@ CUDA_VISIBLE_DEVICES=$cuda python3 train_policy_robotwin.py \
     --chunk_size $chunk_size  --norm_type minmax --disable_vae_latent \
     --num_epochs  $num_epochs \
     --lr 1e-4  --lr_schedule_type $lr_schedule_type  \
-    --seed $seed --num_episodes 10  \
+    --seed $seed --num_episodes 100  \
     --kl_weight 10 \
     --dist-url 'tcp://localhost:10001' \
     --world-size 1 \
