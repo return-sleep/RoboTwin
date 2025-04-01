@@ -11,16 +11,16 @@
 #SBATCH --mail-type=ALL #Receive an email for ALL Job S
 
 task_name=$1
-num_epochs=$2
-chunk_size=$3
-seed=$4
+num_epochs=300
+chunk_size=20
+seed=0
 lr_schedule_type=cosine_warmup
 
 # ['blocks_stack_hard', 'block_handover', 'bottle_adjust', 'container_place', 'diverse_bottles_pick', 'dual_bottles_pick_easy', 'dual_bottles_pick_hard', 'block_hammer_beat', 'block_handover', 'blocks_stack_easy', 'dual_shoes_place', 'empty_cup_place', 'mug_hanging_easy', 'mug_hanging_hard', 'put_apple_cabinet', 'shoe_place','pick_apple_messy']
 echo "Processing $task_name"
 python3 train_policy_robotwin.py \
     --task_name  $task_name \
-    --ckpt_dir checkpoints/$task_name/act_dp/${chunk_size}_${lr_schedule_type}/seed_$seed/num_epochs_$num_epochs \
+    --ckpt_dir checkpoints/$task_name/act_dp/${chunk_size}/seed_$seed/num_epochs_$num_epochs \
     --policy_class ACT_diffusion --hidden_dim 512 --batch_size 256  --dim_feedforward 3200 \
     --chunk_size $chunk_size --disable_vae_latent \
     --num_epochs $num_epochs  \

@@ -202,7 +202,7 @@ class Transformer_Denoise(nn.Module):
         # denoise_embed: denoise timestep embedding
         # noisy_actions: noisy actions
 
-        if len(src.shape) == 4:  # has H and W
+        if len(src.shape) == 4:  # has H and W b d h (w n_view)
             # flatten NxCxHxW to HWxNxC
             bs, c, h, w = src.shape
             src = src.flatten(2).permute(2, 0, 1)  # h*w, bs, c
@@ -236,24 +236,11 @@ class Transformer_Denoise(nn.Module):
         memory = self.encoder(
             src, src_key_padding_mask=mask, pos=pos_embed
         )  # cross attention
-        # memory = src # HARD CODE SKIP ENCODER
-        # TODO need time step embedding how to add memory = memory + time_step_embedding or cat
-        # ? why transformer decoder need query_pos
-        # pos: encoder pe & memory pe
-        # query_pos: decoder pe
-        # skip transformer encoder? just add time embedding to cross attention how?
-        # memory = memory + denoise_embed # h*w bs d add time embedding # add? or cat?
         denoise_step_pos_embed = self.denoise_step_pos_embed.weight.unsqueeze(1).repeat(
             1, bs, 1
         )  # 1 D -> 1 B D
         memory = torch.cat([memory, denoise_embed], axis=0)
         pos_embed = torch.cat([pos_embed, denoise_step_pos_embed], axis=0)
-        # if self.diffusion_timestep_type == 'cat':
-        #     denoise_step_pos_embed  = denoise_step_pos_embed.weight.unsqueeze(1).repeat(1, bs, 1) # 1 D -> 1 B D
-        #     memory = torch.cat([memory, denoise_embed], axis=0)
-        #     pos_embed = torch.cat([pos_embed, denoise_step_pos_embed], axis=0)
-        # else: # add
-        #     memory = memory + denoise_embed
         seq_len = tgt.shape[0]
         if self.causal_mask:
             tgt_mask = torch.triu(

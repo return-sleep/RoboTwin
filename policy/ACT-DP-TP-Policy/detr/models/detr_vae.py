@@ -378,6 +378,7 @@ class DETRVAE_Denoise(nn.Module):
         state_dim,
         num_queries,
         camera_names,
+        history_step,
         disable_vae_latent,
     ):
         """Initializes the model.
@@ -406,7 +407,7 @@ class DETRVAE_Denoise(nn.Module):
         self.query_embed = nn.Embedding(num_queries, hidden_dim)
         if backbones is not None:
             self.input_proj = nn.Conv2d(
-                backbones[0].num_channels, hidden_dim, kernel_size=1
+                backbones[0].num_channels * (history_step + 1) , hidden_dim, kernel_size=1
             )
             self.backbones = nn.ModuleList(backbones)
             self.input_proj_robot_state = nn.Linear(14, hidden_dim)  # proprioception
@@ -428,15 +429,15 @@ class DETRVAE_Denoise(nn.Module):
             hidden_dim, self.latent_dim * 2
         )  # project hidden state to latent std, var
         self.register_buffer(
-            "pos_table", get_sinusoid_encoding_table(1 + 1 + num_queries, hidden_dim)
+            "pos_table", get_sinusoid_encoding_table(1 + 1 + history_step + num_queries, hidden_dim)
         )  # [CLS], qpos, a_seq
-
+        self.history_step =  history_step
         # decoder extra parameters vae latent to decoder token space
         self.latent_out_proj = nn.Linear(
             self.latent_dim, hidden_dim
         )  # project latent sample to embedding
         self.additional_pos_embed = nn.Embedding(
-            2, hidden_dim
+            2 + history_step, hidden_dim
         )  # learned position embedding for proprio and latent
 
     # src, mask, query_embed, pos_embed, latent_input=None, proprio_input=None, additional_pos_embed=None, noisy_actions = None, denoise_steps=None
@@ -451,8 +452,8 @@ class DETRVAE_Denoise(nn.Module):
         is_training=True,
     ):
         """
-        qpos: batch, qpos_dim
-        image: batch, num_cam, channel, height, width
+        qpos: batch, 1+history, qpos_dim
+        image: batch, 1+history, num_cam, channel, height, width
         env_state: None
         actions: batch, seq, action_dim noisy action
         denoise_step: int, the step of denoise
@@ -503,20 +504,29 @@ class DETRVAE_Denoise(nn.Module):
             latent_input = self.latent_out_proj(latent_sample)
 
         if self.backbones is not None:
-            # Image observation features and position embeddings
-            all_cam_features = []
-            all_cam_pos = []
-            for cam_id, cam_name in enumerate(self.camera_names):
-                features, pos = self.backbones[0](image[:, cam_id])  # HARDCODED
-                features = features[0]  # take the last layer feature
-                pos = pos[0]
-                all_cam_features.append(self.input_proj(features))
-                all_cam_pos.append(pos)
             # proprioception features
             proprio_input = self.input_proj_robot_state(qpos)
-            # fold camera dimension into width dimension
-            src = torch.cat(all_cam_features, axis=3)  # B D H W*4
-            pos = torch.cat(all_cam_pos, axis=3)  # B D H W*4 src_pos_emb
+            # Image observation features and position embeddings
+            image = image.view( -1, *image.shape[2:])  #  frame stack shape: batch*T', num_cam, 3, height, width
+            all_cam_features = []
+            for cam_id, cam_name in enumerate(self.camera_names):
+                features, pos = self.backbones[cam_id](
+                    image[:, cam_id]
+                )  # shape: batch*T', C, H, W
+                features = features[0]  # take the last layer feature
+                features = features.view(
+                    bs, -1, *features.shape[-2:]
+                )  # shape: batch, T'*C, H, W
+                all_cam_features.append(self.input_proj(features))
+            src = torch.stack(all_cam_features, axis=-3)  # shape: batch,D,N_view, H, W
+            pos = get_nd_sincos_pos_embed_from_grid(
+                self.hidden_dim, src.shape[2:]
+            )  #  N_view, H, W, D numpy
+            pos = torch.from_numpy(pos).to(src.device).unsqueeze(0).float()
+             # 1 N_view, H, W, D
+            src = rearrange(src,"b d n_view h w -> b d h (w n_view)",)
+            pos = rearrange(pos,"b n_view h w d -> b d h (w n_view)",)  # will b d h*w*n_view in the following transformer
+            
             hs = self.transformer(
                 src,
                 None,
@@ -2648,8 +2658,9 @@ def build_diffusion(args):
     # backbone = None # from state for now, no need for conv nets
     # From image
     backbones = []
-    backbone = build_backbone(args)
-    backbones.append(backbone)  # fixed
+    bfor camera_id in args.camera_names:
+        backbone = build_backbone(args)
+        backbones.append(backbone)
     transformer = build_transformer_denoise(
         args
     )  # decoder input noisy input & PE & time_embedding
@@ -2661,6 +2672,7 @@ def build_diffusion(args):
         state_dim=state_dim,
         num_queries=args.num_queries,
         camera_names=args.camera_names,  # add additional denoise step
+        history_step=args.history_step,
         disable_vae_latent=args.disable_vae_latent,
     )
 

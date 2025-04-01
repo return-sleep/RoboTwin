@@ -537,11 +537,17 @@ def forward_pass(config, data, policy, stats=None, is_training=True, downsample_
         action_data, stats, config["norm_type"], data_type="action"
     )
 
-    if isinstance(policy, (ACTPolicy, CNNMLPPolicy, ACTDiffusionPolicy)) or isinstance(
-        getattr(policy, "module", None), (ACTPolicy, CNNMLPPolicy, ACTDiffusionPolicy)
+    if isinstance(policy, (ACTPolicy, CNNMLPPolicy)) or isinstance(
+        getattr(policy, "module", None), (ACTPolicy, CNNMLPPolicy)
     ):  # for mutli-gpu
         image_data = image_data[:, -1]  # B, N, C, H, W no history TODO
         qpos_data = qpos_data[:, -1]  # B, N , C, H, W
+        return policy(qpos_data, image_data, action_data, is_pad, is_training)  #
+    elif:isinstance(policy, ( ACTDiffusionPolicy)) or isinstance(
+        getattr(policy, "module", None), (ACTDiffusionPolicy)
+    ):
+        image_data = image_data #[:, -1]  # B, his+1, N, C, H, W no history TODO
+        qpos_data = qpos_data# [:, -1]  # B, his+1, N , C, H, W
         return policy(qpos_data, image_data, action_data, is_pad, is_training)  #
     else:
         # print('image_data.shape,future_imgs_data.shape')

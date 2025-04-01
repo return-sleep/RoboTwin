@@ -208,6 +208,9 @@ class ACTDiffusionPolicy(nn.Module):
             self.aug = RandomShiftsAug(15, 20)  # TODO acording to the task
         else:
             self.aug = RandomShiftsAug(8, 10)  # for robotwin env
+        self.history_steps = args_override["history_step"]
+        self.obs_image = deque(maxlen=self.history_steps + 1)
+        self.obs_qpos = deque(maxlen=self.history_steps + 1)
         # diffusion setup
         self.num_inference_steps = args_override["num_inference_steps"]
         self.num_queries = args_override["num_queries"]
@@ -232,6 +235,10 @@ class ACTDiffusionPolicy(nn.Module):
         print(f"Loss Type {self.loss_type}")
 
     def train_model(self, qpos, image, actions, is_pad=None):
+        """
+        qpos: B his+1 14
+        image: B his+1 N_view 3 H W 
+        """
         env_state = None
         noise = torch.randn_like(actions).to(actions.device)
         bsz = actions.shape[0]
@@ -295,6 +302,9 @@ class ACTDiffusionPolicy(nn.Module):
         """
         diffusion process to generate actions
         """
+        if len(image.shape) == 5:  # B N C H W
+            qpos = qpos.unsqueeze(1)
+            image = image.unsqueeze(1)
         env_state = None
         model = self.model
         scheduler = self.noise_scheduler
@@ -338,30 +348,6 @@ class ACTDiffusionPolicy(nn.Module):
 
     def configure_optimizers(self):
         return self.optimizer
-
-    def reset_obs(self, stats, norm_type):
-        self.stats = stats
-        self.norm_type = norm_type
-
-    def update_obs(self, obs):
-        self.obs_image = (
-            torch.from_numpy(obs["head_cam"]).unsqueeze(0).unsqueeze(0).float().cuda()
-        )  # 1 1 C H W 0~1
-        obs_qpos = torch.from_numpy(obs["agent_pos"]).unsqueeze(0).float().cuda()
-        self.obs_qpos = normalize_data(
-            obs_qpos, self.stats, "gaussian", data_type="qpos"
-        )  # qpos mean std
-
-    def get_action(self):
-        a_hat = self(self.obs_qpos, self.obs_image).detach().cpu().numpy()  # B T K
-        # unnormalize
-        if self.norm_type == "minmax":
-            a_hat = (a_hat + 1) / 2 * (
-                self.stats["action_max"] - self.stats["action_min"]
-            ) + self.stats["action_min"]
-        elif self.norm_type == "gaussian":
-            a_hat = a_hat * self.stats["action_std"] + self.stats["action_mean"]
-        return a_hat[0]  # chunksize 14
 
 
 ## use visual tokenization
