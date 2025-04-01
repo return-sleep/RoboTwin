@@ -57,7 +57,6 @@ policy/ACT-DP-TP-old/*
 policy/ACT-DP-TP-Policy/misc/*
 policy/ACT-DP-TP-Policy/data_zarr/*
 policy/ACT-DP-TP-Policy/Cosmos-Tokenizer/pretrained_ckpts/*
-policy/ACT-DP-TP-Policy/scripts/*
 data/*
 data
 policy/ACT-DP-TP-Policy/checkpoints
