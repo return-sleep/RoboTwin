@@ -33,6 +33,7 @@ e = IPython.embed
 current_dir = os.path.abspath(os.path.dirname(__file__))
 DATA_DIR = os.path.join(current_dir, "data_zarr")
 DATA_DIR = '/attached/remote-home2/xhl/8_kaust_pj/RoboTwin/data/data_zarr'
+DATA_DIR = '/media/xuhuilin/Ubuntu_Data/0_project/0_bimanual/RoboTwin/data/data_zarr'
 CAMERA_NAMES = ["head_camera","front_camera","left_camera", "right_camera"]
 
 
@@ -80,7 +81,7 @@ def main_worker(gpu, ngpus_per_node, args):
             # Set the project where this run will be logged
             project="robotwin",
             # Track hyperparameters and run metadata
-            name=task_name + "_" + policy_class + "_"ckpt_dir.split("/")[-1],
+            name=task_name + "_" + policy_class + "_" + ckpt_dir.split("/")[-1],
             config={
                 # "learning_rate": lr,
                 "task_name": task_name,
@@ -500,6 +501,7 @@ def train_bc(train_dataloader, val_dataloader, config, train_sampler=None, stats
 
 
 def make_policy(policy_class, policy_config):
+    print('policy_class:',policy_class)
     if policy_class == "ACT":
         policy = (
             ACTPolicy_NextFrame(policy_config)
@@ -543,11 +545,13 @@ def forward_pass(config, data, policy, stats=None, is_training=True, downsample_
         image_data = image_data[:, -1]  # B, N, C, H, W no history TODO
         qpos_data = qpos_data[:, -1]  # B, N , C, H, W
         return policy(qpos_data, image_data, action_data, is_pad, is_training)  #
-    elif:isinstance(policy, ( ACTDiffusionPolicy)) or isinstance(
+    elif isinstance(policy, ( ACTDiffusionPolicy)) or isinstance(
         getattr(policy, "module", None), (ACTDiffusionPolicy)
     ):
         image_data = image_data #[:, -1]  # B, his+1, N, C, H, W no history TODO
         qpos_data = qpos_data# [:, -1]  # B, his+1, N , C, H, W
+        # print('act_dp image_data.shape,qpos_data.shape')
+        # print(image_data.shape,qpos_data.shape)
         return policy(qpos_data, image_data, action_data, is_pad, is_training)  #
     else:
         # print('image_data.shape,future_imgs_data.shape')

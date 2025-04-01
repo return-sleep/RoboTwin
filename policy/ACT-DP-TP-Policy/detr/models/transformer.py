@@ -215,9 +215,11 @@ class Transformer_Denoise(nn.Module):
             )  # seq, bs, dim
             pos_embed = torch.cat([additional_pos_embed, pos_embed], axis=0)
 
-            addition_input = torch.stack(
-                [latent_input, proprio_input], axis=0
-            )  # vae latent, proprio + img embedding
+            latent_input = latent_input.unsqueeze(1)  # B 1 D
+            addition_input = torch.cat([latent_input, proprio_input], axis=1).permute(
+                1, 0, 2
+            )  #  B T+1 D -> T+1 B D
+            
             src = torch.cat([addition_input, src], axis=0)
         else:
             assert len(src.shape) == 3

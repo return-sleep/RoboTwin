@@ -397,6 +397,7 @@ class DETRVAE_Denoise(nn.Module):
         self.encoder = encoder
         self.disable_vae_latent = disable_vae_latent
         hidden_dim = transformer.d_model  # 512
+        self.hidden_dim = hidden_dim
         # self.action_head = nn.Linear(hidden_dim, state_dim)
         self.action_head = nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim),
@@ -459,7 +460,7 @@ class DETRVAE_Denoise(nn.Module):
         denoise_step: int, the step of denoise
         """
         # is_training = actions is not None # train or val
-        bs, _ = qpos.shape
+        bs = qpos.shape[0]
         ### Obtain latent z from action sequence add a paramers = use_latent = True
         if is_training and self.disable_vae_latent == False:
             # project action sequence to embedding dim, and concat with a CLS token
@@ -2658,7 +2659,7 @@ def build_diffusion(args):
     # backbone = None # from state for now, no need for conv nets
     # From image
     backbones = []
-    bfor camera_id in args.camera_names:
+    for camera_id in args.camera_names:
         backbone = build_backbone(args)
         backbones.append(backbone)
     transformer = build_transformer_denoise(
