@@ -78,9 +78,9 @@ def main_worker(gpu, ngpus_per_node, args):
     if is_wandb and args["gpu"] == 0:
         run = wandb.init(
             # Set the project where this run will be logged
-            project="aloha_project",
+            project="robotwin",
             # Track hyperparameters and run metadata
-            name=task_name + "_" + ckpt_dir.split("/")[-1],
+            name=task_name + "_" + policy_class + "_"ckpt_dir.split("/")[-1],
             config={
                 # "learning_rate": lr,
                 "task_name": task_name,
