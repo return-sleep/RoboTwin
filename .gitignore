@@ -57,6 +57,7 @@ policy/ACT-DP-TP-old/*
 policy/ACT-DP-TP-Policy/misc/*
 policy/ACT-DP-TP-Policy/data_zarr/*
 policy/ACT-DP-TP-Policy/Cosmos-Tokenizer/pretrained_ckpts/*
+policy/ACT-DP-TP-Policy/Cosmos-Tokenizer/*
 data/*
 data
 policy/ACT-DP-TP-Policy/checkpoints
@@ -67,3 +68,4 @@ data_generate.sh
 ts.sh
 policy/ACT-DP-TP-Policy/detr/models/__pycache__/*.pyc
 policy/ACT-DP-TP-Policy/detr/models/mr_mg/policy/model/__pycache__/*.pyc
+ckpt_transfer.sh

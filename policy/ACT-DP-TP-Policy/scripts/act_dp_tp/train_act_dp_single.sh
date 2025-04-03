@@ -34,7 +34,7 @@ attention_type=v3
 echo "Processing $task_name"
 CUDA_VISIBLE_DEVICES=$cuda python3 train_policy_robotwin.py \
     --task_name  $task_name \
-    --ckpt_dir checkpoints/$task_name/act_dp_tp/dp_single_${chunk_size}_${history_step}/num_epochs_$num_epochs \
+    --ckpt_dir checkpoints/$task_name/single_${chunk_size}_${history_step}/act_dp_tp \
     --policy_class ACT_diffusion_tp --hidden_dim 512  --batch_size 256 --dim_feedforward 3200 \
     --chunk_size $chunk_size  --norm_type minmax --disable_vae_latent \
     --predict_frame $predict_frame --patch_size 5 --temporal_downsample_rate $temporal_downsample_rate   --prediction_weight 0.0  \

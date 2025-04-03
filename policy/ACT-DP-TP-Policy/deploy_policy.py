@@ -482,7 +482,7 @@ def encode_obs(observation):  # For ACT-DP DP
 def get_model(ckpt_folder):
     # f"./policy/{policy_name}/checkpoints/", usr_args.ckpt_folder
     print("ckpt_folder: ", ckpt_folder)
-    policy_subname = ckpt_folder.split("/")[-4]
+    policy_subname = ckpt_folder.split("/")[-1]
     print("policy_subname: ", policy_subname)  # TODO add act and act_dp policy
     if policy_subname == "act":
         return ACT(ckpt_folder)
