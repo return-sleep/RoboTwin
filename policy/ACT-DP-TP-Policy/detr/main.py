@@ -82,6 +82,11 @@ def get_args_parser():
         help="Use resnet to encode obs image  by default",
     )
     parser.add_argument(
+        "--disable_scale",
+        action="store_true",
+        help="scale model up",
+    )
+    parser.add_argument(
         "--inference_num_queries",
         default=0,
         type=int,

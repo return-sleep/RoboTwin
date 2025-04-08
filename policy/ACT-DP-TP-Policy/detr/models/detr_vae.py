@@ -402,7 +402,7 @@ class DETRVAE_Denoise(nn.Module):
         self.action_head = nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim),
             nn.SiLU(),
-            nn.Linear(hidden_dim, state_dim),
+            nn.Linear(hidden_dim, state_dim), # TODO add layers
         )
         self.is_pad_head = nn.Linear(hidden_dim, 1)
         self.query_embed = nn.Embedding(num_queries, hidden_dim)

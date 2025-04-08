@@ -69,3 +69,5 @@ ts.sh
 policy/ACT-DP-TP-Policy/detr/models/__pycache__/*.pyc
 policy/ACT-DP-TP-Policy/detr/models/mr_mg/policy/model/__pycache__/*.pyc
 ckpt_transfer.sh
+data_200/*
+data_200

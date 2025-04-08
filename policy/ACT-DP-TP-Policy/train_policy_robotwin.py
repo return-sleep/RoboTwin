@@ -34,7 +34,7 @@ current_dir = os.path.abspath(os.path.dirname(__file__))
 DATA_DIR = os.path.join(current_dir, "data_zarr")
 DATA_DIR = '/attached/remote-home2/xhl/8_kaust_pj/RoboTwin/data/data_zarr'
 # DATA_DIR = '/media/xuhuilin/Ubuntu_Data/0_project/0_bimanual/RoboTwin/data/data_zarr'
-CAMERA_NAMES = ["head_camera","front_camera","left_camera", "right_camera"]
+CAMERA_NAMES = ["head_camera","left_camera", "right_camera"]
 
 
 def main_worker(gpu, ngpus_per_node, args):
@@ -114,8 +114,8 @@ def main_worker(gpu, ngpus_per_node, args):
     print("backbone:", backbone)
     # backbone = 'resnet18' # TODO maybe change to frozed tokenizer
     if "diffusion" in policy_class or "ACT" in policy_class:
-        enc_layers = 4  # TODO scale model
-        dec_layers = 7  # TODO scale model
+        enc_layers = 4  if args["disable_scale"] else 6 # TODO scale model 6 
+        dec_layers = 7  if args["disable_scale"] else 10 # TODO scale model 10
         nheads = 8  # TODO scale model
         policy_config = {
             "lr": args["lr"],
@@ -717,6 +717,11 @@ if __name__ == "__main__":
         "--disable_resnet",
         action="store_true",
         help="Use resnet to encode obs image  by default",
+    )
+    parser.add_argument(
+        "--disable_scale",
+        action="store_true",
+        help="scale model up",
     )
     parser.add_argument(
         "--share_decoder", action="store_true", help="jpeg and action share decoder"
