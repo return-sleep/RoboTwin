@@ -37,6 +37,6 @@ CUDA_VISIBLE_DEVICES=$cuda python3 train_policy_robotwin.py \
     --dist-url 'tcp://localhost:10001' \
     --world-size 1 \
     --rank 0 \
-    --gpu 0  \
+    --gpu 0  --resume policy_lastest_seed_0.ckpt \
     --history_step $history_step \
     --disable_multi_view --backbone $backbone  \

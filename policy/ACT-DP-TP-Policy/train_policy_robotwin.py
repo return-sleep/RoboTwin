@@ -353,7 +353,7 @@ def train_bc(train_dataloader, val_dataloader, config, train_sampler=None, stats
             else:
                 # Map model to be loaded to specified single gpu.
                 loc = "cuda:{}".format(config["gpu"])
-                checkpoint = torch.load(ckpt_path, map_location=loc)
+                checkpoint = torch.load(ckpt_path, map_location=loc,weights_only=False)
             # start_epoch = int(config['resume'].split('_')[2])
             start_epoch = checkpoint["epoch"]
             policy.load_state_dict(convert_weigt(checkpoint["state_dict"]))
@@ -397,7 +397,7 @@ def train_bc(train_dataloader, val_dataloader, config, train_sampler=None, stats
                 best_ckpt_info = (epoch, min_val_loss, deepcopy(policy.state_dict()))
                 ckpt_path = os.path.join(ckpt_dir, f"policy_best.ckpt")
                 if config["gpu"] == 0:
-                    torch.save(policy.state_dict(), ckpt_path)
+                    # torch.save(policy.state_dict(), ckpt_path)
                     if config["policy_config"]["is_wandb"]:
                         wandb.log(
                             {"Val/best_epoch": epoch, "Val/min_val_loss": min_val_loss}
@@ -468,7 +468,11 @@ def train_bc(train_dataloader, val_dataloader, config, train_sampler=None, stats
                 ckpt_path = os.path.join(
                     ckpt_dir, f"policy_epoch_{epoch}_seed_{seed}.ckpt"
                 )
-                torch.save(policy.state_dict(), ckpt_path)
+                ckpt_save =  {
+                 "state_dict": policy.state_dict(),
+                 "stats": stats,   
+                }
+                torch.save(ckpt_save, ckpt_path)
                 
 
             lastest_ckpt = {
@@ -490,7 +494,11 @@ def train_bc(train_dataloader, val_dataloader, config, train_sampler=None, stats
         ckpt_path = os.path.join(
             ckpt_dir, f"policy_epoch_{best_epoch}_seed_{seed}.ckpt"
         )
-        torch.save(best_state_dict, ckpt_path)
+        ckpt_save = {
+            "state_dict": best_state_dict,
+            "stats": stats,
+        }
+        torch.save(ckpt_save, ckpt_path)
         print(
             f"Training finished:\nSeed {seed}, val loss {min_val_loss:.6f} at epoch {best_epoch}"
         )
