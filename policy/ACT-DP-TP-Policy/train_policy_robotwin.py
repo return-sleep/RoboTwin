@@ -114,8 +114,8 @@ def main_worker(gpu, ngpus_per_node, args):
     print("backbone:", backbone)
     # backbone = 'resnet18' # TODO maybe change to frozed tokenizer
     if "diffusion" in policy_class or "ACT" in policy_class:
-        enc_layers = 4  if args["disable_scale"] else 6 # TODO scale model 6 
-        dec_layers = 7  if args["disable_scale"] else 10 # TODO scale model 10
+        enc_layers = 4  # if args["disable_scale"] else 6 # TODO scale model 6 
+        dec_layers = 7  if args["disable_scale"] else 12 # TODO scale model 10
         nheads = 8  # TODO scale model
         policy_config = {
             "lr": args["lr"],

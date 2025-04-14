@@ -18,7 +18,7 @@ batch_size=$5
 num_epochs=$6
 num_episodes=$7
 seed=0
-lr_schedule_type=cosine_warmup
+lr_schedule_type=constant
 
 echo "Processing $task_name"
 CUDA_VISIBLE_DEVICES=$cuda python3 train_policy_robotwin.py \
@@ -27,12 +27,12 @@ CUDA_VISIBLE_DEVICES=$cuda python3 train_policy_robotwin.py \
     --policy_class ACT_diffusion --hidden_dim 512  --batch_size $batch_size --dim_feedforward 3200 \
     --chunk_size $chunk_size  --norm_type minmax --disable_vae_latent \
     --num_epochs  $num_epochs \
-    --lr 1e-4  --lr_schedule_type $lr_schedule_type  \
+    --lr 5e-6  --lr_schedule_type $lr_schedule_type  \
     --seed $seed --num_episodes $num_episodes  \
     --kl_weight 10 \
     --dist-url 'tcp://localhost:10001' \
     --world-size 1 \
     --rank 0 \
-    --gpu 0  \
+    --gpu 0  --resume policy_lastest_seed_0.ckpt \
     --history_step $history_step \
     --disable_multi_view --disable_scale \

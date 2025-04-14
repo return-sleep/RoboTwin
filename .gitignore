@@ -71,3 +71,4 @@ policy/ACT-DP-TP-Policy/detr/models/mr_mg/policy/model/__pycache__/*.pyc
 ckpt_transfer.sh
 data_200/*
 data_200
+policy/ACT-DP-TP-Policy/Scale_DP.py

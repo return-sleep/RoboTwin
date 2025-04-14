@@ -17,7 +17,7 @@ cuda=$4
 batch_size=$5
 num_epochs=$6
 num_episodes=$7
-backbone=resnet50
+backbone=resnet18
 
 
 
@@ -27,7 +27,7 @@ lr_schedule_type=cosine_warmup
 echo "Processing $task_name"
 CUDA_VISIBLE_DEVICES=$cuda python3 train_policy_robotwin.py \
     --task_name  $task_name \
-    --ckpt_dir checkpoints/$task_name/single_${chunk_size}_${history_step}_${num_epochs}_${num_episodes}_scale/act_dp \
+    --ckpt_dir checkpoints/$task_name/single_${chunk_size}_${history_step}_${num_epochs}_${num_episodes}_${backbone}/act_dp \
     --policy_class ACT_diffusion --hidden_dim 512  --batch_size $batch_size --dim_feedforward 3200 \
     --chunk_size $chunk_size  --norm_type minmax --disable_vae_latent \
     --num_epochs  $num_epochs \

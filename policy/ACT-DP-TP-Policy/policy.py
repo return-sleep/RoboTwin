@@ -11,8 +11,8 @@ from collections import deque
 from utils_robotwin import normalize_data, tensor2numpy, kl_divergence, RandomShiftsAug
 import os
 
-from cosmos_tokenizer.video_lib import CausalVideoTokenizer
-from cosmos_tokenizer.image_lib import ImageTokenizer
+# from cosmos_tokenizer.video_lib import CausalVideoTokenizer
+# from cosmos_tokenizer.image_lib import ImageTokenizer
 
 
 def get_tokenizer(model_name):

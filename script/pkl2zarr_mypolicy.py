@@ -21,7 +21,7 @@ def main():
     task_name = args.task_name
     num = args.expert_data_num
     setting = "D435"
-    load_dir = f'data/{task_name}_{setting}'
+    load_dir = f'data_200/{task_name}_{setting}'
     
     total_count = 0
 
