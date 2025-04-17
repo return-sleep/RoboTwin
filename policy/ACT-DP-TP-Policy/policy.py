@@ -349,6 +349,151 @@ class ACTDiffusionPolicy(nn.Module):
     def configure_optimizers(self):
         return self.optimizer
 
+class ACTDiffusionPolicy_Tactile(nn.Module):
+    def __init__(self, args_override):
+        super().__init__()
+        model, optimizer = build_ACTDiffusion_tactile_model_and_optimizer(args_override)
+        self.model = model  # CVAE decoder
+        self.optimizer = optimizer
+        print(args_override.keys())
+        self.aug = RandomShiftsAug(8, 10)  # for robotwin env
+        self.history_steps = 0
+        self.obs_image = deque(maxlen=self.history_steps + 1)
+        self.obs_qpos = deque(maxlen=self.history_steps + 1)
+        self.obs_tactile = deque(maxlen=self.history_steps + 1)
+        # diffusion setup
+        self.num_inference_steps = args_override["num_inference_steps"]
+        self.num_queries = args_override["num_queries"]
+        num_train_timesteps = args_override["num_train_timesteps"]
+        prediction_type = args_override["prediction_type"]
+        beta_schedule = args_override["beta_schedule"]
+        noise_scheduler = (
+            DDIMScheduler if args_override["schedule_type"] == "DDIM" else DDPMScheduler
+        )
+        noise_scheduler = noise_scheduler(
+            num_train_timesteps=num_train_timesteps,
+            beta_schedule=beta_schedule,
+            prediction_type=prediction_type,
+        )
+
+        self.noise_scheduler = noise_scheduler
+        self.loss_type = args_override["loss_type"]
+        print("num_train_timesteps", {args_override["num_train_timesteps"]})
+        print("schedule_type", {args_override["schedule_type"]})
+        print("beta_schedule", {args_override["beta_schedule"]})
+        print("prediction_type", {args_override["prediction_type"]})
+        print(f"Loss Type {self.loss_type}")
+
+    def train_model(self, qpos, image,tactile, actions, is_pad=None):
+        """
+        qpos: B his+1 14
+        image: B his+1 N_view 3 H W 
+        """
+        env_state = None
+        noise = torch.randn_like(actions).to(actions.device)
+        bsz = actions.shape[0]
+        timesteps = torch.randint(
+            0,
+            self.noise_scheduler.config.num_train_timesteps,
+            (bsz,),
+            device=actions.device,
+        )
+        noisy_actions = self.noise_scheduler.add_noise(actions, noise, timesteps)
+
+        pred, is_pad_hat = self.model(
+            qpos, image, tactile, env_state, noisy_actions, is_pad, denoise_steps=timesteps
+        )
+
+        pred_type = self.noise_scheduler.config.prediction_type
+
+        if pred_type == "epsilon":
+            target = noise
+        elif pred_type == "sample":
+            target = actions
+        elif pred_type == "v_prediction":
+            # https://github.com/huggingface/diffusers/blob/main/src/diffusers/schedulers/scheduling_dpmsolver_multistep.py
+            # https://github.com/huggingface/diffusers/blob/v0.11.1-patch/src/diffusers/schedulers/scheduling_dpmsolver_multistep.py
+            # sigma = self.noise_scheduler.sigmas[timesteps]
+            # alpha_t, sigma_t = self.noise_scheduler._sigma_to_alpha_sigma_t(sigma)
+            self.noise_scheduler.alpha_t = self.noise_scheduler.alpha_t.to(self.device)
+            self.noise_scheduler.sigma_t = self.noise_scheduler.sigma_t.to(self.device)
+            alpha_t, sigma_t = (
+                self.noise_scheduler.alpha_t[timesteps],
+                self.noise_scheduler.sigma_t[timesteps],
+            )
+            alpha_t = alpha_t.unsqueeze(-1).unsqueeze(-1)
+            sigma_t = sigma_t.unsqueeze(-1).unsqueeze(-1)
+            v_t = alpha_t * noise - sigma_t * actions
+            target = v_t # flow matching?
+        else:
+            raise ValueError(f"Unsupported prediction type {pred_type}")
+
+        loss_dict = {}
+        if self.loss_type == "l2":
+            loss = F.mse_loss(pred, target, reduction="none")
+        elif self.loss_type == "l1":
+            loss = F.l1_loss(pred, target, reduction="none")
+        diffusion_loss = (loss * ~is_pad.unsqueeze(-1)).mean()
+        diffusion_loss_name = pred_type + "_diffusion_loss_" + self.loss_type
+        loss_dict[diffusion_loss_name] = diffusion_loss
+
+        loss_dict["loss"] = loss_dict[diffusion_loss_name]
+        return loss_dict
+
+    # ===================inferece ===============
+    def conditional_sample(self, qpos, image,tactile, is_pad):
+        """
+        diffusion process to generate actions
+        """
+        if len(image.shape) == 5:  # B N C H W
+            qpos = qpos.unsqueeze(1)
+            image = image.unsqueeze(1)
+            tactile = tactile.unsqueeze(1)
+        env_state = None
+        model = self.model
+        scheduler = self.noise_scheduler
+        batch = image.shape[0]
+        action_shape = (batch, self.num_queries, 14)
+        actions = torch.randn(action_shape, device=qpos.device, dtype=qpos.dtype)
+        scheduler.set_timesteps(self.num_inference_steps)
+        for t in scheduler.timesteps:
+            timesteps = torch.full((batch,), t, device=qpos.device, dtype=torch.long)
+            model_output, is_pad_hat, [mu, logvar] = model(
+                qpos,
+                image,
+                tactile,
+                env_state,
+                actions,
+                is_pad,
+                denoise_steps=timesteps,
+                is_training=False,
+            )
+            actions = scheduler.step(model_output, t, actions).prev_sample
+        return actions
+
+    def __call__(self, qpos, image, tactile, actions=None, is_pad=None, is_training=True):
+        # qpos: B D
+        # image: B Num_view C H W
+        # actions: B T K
+        normalize = transforms.Normalize(
+            mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+        )
+
+        if actions is not None:  # training time
+            image = self.aug(image) if is_training else image
+            image = normalize(image)
+            actions = actions[:, : self.model.num_queries]
+            is_pad = is_pad[:, : self.model.num_queries]
+            loss_dict = self.train_model(qpos, image,tactile, actions, is_pad)
+            return loss_dict
+        else:  # inference time
+            image = normalize(image)
+            a_hat = self.conditional_sample(qpos, image,tactile,is_pad)
+            return a_hat
+
+    def configure_optimizers(self):
+        return self.optimizer
+
 
 ## use visual tokenization
 """

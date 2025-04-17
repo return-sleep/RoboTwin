@@ -12,6 +12,7 @@ from .detr_vae import build_diffusion as build_diffusion
 from .detr_vae import build_diffusion_tp as build_diffusion_tp
 from .detr_vae import build_diffusion_tp_with_dual_visual_token as build_diffusion_tp_with_dual_visual_token
 from .detr_vae import build_diffusion_pp as build_diffusion_pp
+from .detr_vae import build_diffusion_tactile as build_diffusion_tactile
 
 def build_ACT_model(args):
     return build_vae(args)
@@ -21,6 +22,9 @@ def build_CNNMLP_model(args):
 
 def build_ACTDiffusion_model(args):
     return build_diffusion(args)
+
+def build_ACTDiffusion_tactile_model(args):
+    return build_diffusion_tactile(args)
 
 def build_ACTDiffusion_tp_model(args):
     if args.diffusion_timestep_type  == 'vis_cat': # HARDCODE whether use tokenizer feature for decoder & action prediction

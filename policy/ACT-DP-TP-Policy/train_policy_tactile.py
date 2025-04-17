@@ -10,11 +10,10 @@ import torch.multiprocessing as mp
 import builtins
 import torch.distributed as dist
 import wandb
-from utils_robotwin import load_data_unified_multiview
+from utils_robotwin import load_data_unified_vision_tacile
 from utils_robotwin import compute_dict_mean, set_seed, detach_dict
 from utils_robotwin import plot_history, create_multiview_video
 from utils_robotwin import (
-    EMAModel,
     get_cosine_schedule_with_warmup,
     get_constant_schedule,
     convert_weigt,
@@ -180,9 +179,11 @@ def main_worker(gpu, ngpus_per_node, args):
         }
     else:
         raise NotImplementedError
+
     # save policy config
     with open(os.path.join(ckpt_dir, "policy_config.json"), "w") as json_file:
         json.dump(policy_config, json_file, indent=4)
+    
     
     config = {
         "num_epochs": num_epochs,
@@ -220,21 +221,14 @@ def main_worker(gpu, ngpus_per_node, args):
     #######################  load data ############################
     print("####################### Step 1: get dataloader #######################")
     distributed = config["world-size"] > 1 or config["multiprocessing-distributed"]
-    train_dataloader, val_dataloader, train_sampler, stats = load_data_unified_multiview(
+    train_dataloader, train_sampler, stats = load_data_unified_vision_tacile(
         dataset_dir,
         task_name,
         head_camera_type,
         num_episodes,
         camera_names,
-        args["train_ratio"],
         batch_size_train,
-        batch_size_val,
         args["chunk_size"],
-        args["history_step"],
-        args["predict_frame"],
-        args["temporal_downsample_rate"],
-        args["predict_only_last"],
-        distributed,
     )
 
     #######################  Train Phase ############################
@@ -242,22 +236,11 @@ def main_worker(gpu, ngpus_per_node, args):
     stats_path = os.path.join(ckpt_dir, f"dataset_stats.pkl")
     with open(stats_path, "wb") as f:
         pickle.dump(stats, f)
-    best_ckpt_info = train_bc(
-        train_dataloader, val_dataloader, config, train_sampler, stats
-    )
-
-    best_epoch, min_val_loss, best_state_dict = best_ckpt_info
-
-    # save best checkpoint no need for scripted data, all in
-    # ckpt_path = os.path.join(ckpt_dir, f"policy_best.ckpt")
-    # torch.save(best_state_dict, ckpt_path)
-    log_message = f"Best ckpt, val loss {min_val_loss:.6f} @ epoch {best_epoch}"
-    print(log_message)
-
+    train_loss_dict = train_bc(train_dataloader, None, config, train_sampler, stats)
+    log_message = f"train loss {train_loss_dict['loss']}"
     log_dir = os.path.join(ckpt_dir, "training_log.txt")
     with open(log_dir, "a") as file:
         file.write(log_message + "\n")
-
 
 def train_bc(train_dataloader, val_dataloader, config, train_sampler=None, stats=None):
     num_epochs = config["num_epochs"]
@@ -367,54 +350,12 @@ def train_bc(train_dataloader, val_dataloader, config, train_sampler=None, stats
     # start training
     print("####################### Step 3: start training #######################")
     train_history = []
-    validation_history = []
-    min_val_loss = np.inf
-    best_ckpt_info = None
     update_step = 0
 
     for epoch in tqdm(range(start_epoch, num_epochs + 1)):
         if config["distributed"]:
             train_sampler.set_epoch(epoch)
         print(f"\nEpoch {epoch}")
-        # validation
-        with torch.inference_mode():
-            policy.eval()
-            epoch_dicts = []
-            for batch_idx, data in enumerate(val_dataloader):
-                forward_dict = forward_pass(
-                    policy_config,
-                    data,
-                    policy,
-                    stats,
-                    is_training=False,
-                    downsample_rate=downsample_rate,
-                )
-                epoch_dicts.append(forward_dict)
-
-            epoch_summary = compute_dict_mean(epoch_dicts)
-            validation_history.append(epoch_summary)
-
-            epoch_val_loss = epoch_summary["loss"]
-            if epoch_val_loss < min_val_loss:
-                min_val_loss = epoch_val_loss
-                best_ckpt_info = (epoch, min_val_loss, deepcopy(policy.state_dict()))
-                ckpt_path = os.path.join(ckpt_dir, f"policy_best.ckpt")
-                if config["gpu"] == 0:
-                    # torch.save(policy.state_dict(), ckpt_path)
-                    if config["policy_config"]["is_wandb"]:
-                        wandb.log(
-                            {"Val/best_epoch": epoch, "Val/min_val_loss": min_val_loss}
-                        )
-
-            if config["gpu"] == 0:
-                print(f"Val loss:   {epoch_val_loss:.5f}")
-                summary_string = ""
-                for k, v in epoch_summary.items():
-                    summary_string += f"{k}: {v.item():.3f} "
-                    if config["policy_config"]["is_wandb"]:
-                        wandb.log({"Val/" + k: v.item()})
-                print(summary_string)
-
         # training
         policy.train()
         optimizer.zero_grad()
@@ -465,7 +406,7 @@ def train_bc(train_dataloader, val_dataloader, config, train_sampler=None, stats
             print(summary_string)
             print("lr:", optimizer.param_groups[0]["lr"])
             if epoch % 10 == 0 and epoch > 0:
-                plot_history(train_history, validation_history, epoch, ckpt_dir, seed)
+                plot_history(train_history, train_history, epoch, ckpt_dir, seed)
             
             if epoch % config["policy_config"]["save_epoch"] == 0 and epoch > 0:
                 ckpt_path = os.path.join(
@@ -489,44 +430,22 @@ def train_bc(train_dataloader, val_dataloader, config, train_sampler=None, stats
             )  # avoid interrupt
             torch.save(lastest_ckpt, lastest_ckpt_path)
 
-    best_epoch, min_val_loss, best_state_dict = best_ckpt_info
-
     if config["gpu"] == 0:
         ckpt_path = os.path.join(ckpt_dir, f"policy_last.ckpt")
         torch.save(policy.state_dict(), ckpt_path)
-        ckpt_path = os.path.join(
-            ckpt_dir, f"policy_epoch_{best_epoch}_seed_{seed}.ckpt"
-        )
-        ckpt_save = {
-            "state_dict": best_state_dict,
-            "stats": stats,
-        }
-        torch.save(ckpt_save, ckpt_path)
-        print(
-            f"Training finished:\nSeed {seed}, val loss {min_val_loss:.6f} at epoch {best_epoch}"
-        )
         # save training curves
-        plot_history(train_history, validation_history, num_epochs, ckpt_dir, seed)
+        plot_history(train_history, train_history, num_epochs, ckpt_dir, seed)
 
-    return best_ckpt_info
+    train_loss_dict = detach_dict(forward_dict)
+    return train_loss_dict
 
 
 def make_policy(policy_class, policy_config):
     print('policy_class:',policy_class)
-    if policy_class == "ACT":
-        policy = (
-            ACTPolicy_NextFrame(policy_config)
-            if policy_config["next_frame"]
-            else ACTPolicy(policy_config)
-        )
-    elif policy_class == "CNNMLP":
-        policy = CNNMLPPolicy(policy_config)
-    elif policy_class == "ACT_diffusion":
+    if policy_class == "ACT_diffusion":
         policy = ACTDiffusionPolicy(policy_config)
-    elif policy_class == "ACT_diffusion_tp":
-        policy = ACTPolicyDiffusion_with_Token_Prediction(policy_config)
-    elif policy_class == "ACT_diffusion_pp":
-        policy = ACTPolicyDiffusion_with_Pixel_Prediction(policy_config)
+    elif policy_class == "ACT_diffusion_tacile":
+        policy = ACTDiffusionPolicy_Tactile(policy_config)
     else:
         raise NotImplementedError
     print(f"Policy: {policy_class}")
@@ -534,17 +453,16 @@ def make_policy(policy_class, policy_config):
 
 
 def forward_pass(config, data, policy, stats=None, is_training=True, downsample_rate=1):
-    image_data, qpos_data, action_data, is_pad, future_imgs_data, is_pad_img = (
+    image_data, qpos_data, action_data, is_pad, tacile_data = (
         data  # raw action
     )
 
-    image_data, qpos_data, action_data, is_pad, future_imgs_data, is_pad_img = (
+    image_data, qpos_data, action_data, is_pad, tacile_data = (
         image_data.cuda(),
         qpos_data.cuda(),
         action_data.cuda(),
         is_pad.cuda(),
-        future_imgs_data.cuda(),
-        is_pad_img.cuda(),
+        tacile_data.cuda(),
     )
     action_data = normalize_data(
         action_data, stats, config["norm_type"], data_type="action"
@@ -556,25 +474,14 @@ def forward_pass(config, data, policy, stats=None, is_training=True, downsample_
         image_data = image_data[:, -1]  # B, N, C, H, W no history TODO
         qpos_data = qpos_data[:, -1]  # B, N , C, H, W
         return policy(qpos_data, image_data, action_data, is_pad, is_training)  #
-    elif isinstance(policy, ( ACTDiffusionPolicy)) or isinstance(
-        getattr(policy, "module", None), (ACTDiffusionPolicy)
+    elif isinstance(policy, ( ACTDiffusionPolicy_Tactile)) or isinstance(
+        getattr(policy, "module", None), (ACTDiffusionPolicy_Tactile)
     ):
-        image_data = image_data #[:, -1]  # B, his+1, N, C, H, W no history TODO
-        qpos_data = qpos_data# [:, -1]  # B, his+1, N , C, H, W
-        # print('act_dp image_data.shape,qpos_data.shape')
-        # print(image_data.shape,qpos_data.shape)
-        return policy(qpos_data, image_data, action_data, is_pad, is_training)  #
+
+        return policy(qpos_data, image_data,tacile_data, action_data, is_pad, is_training)  #
     else:
-        # print('image_data.shape,future_imgs_data.shape')
-        # print(image_data.shape,future_imgs_data.shape)
-        return policy(
-            qpos_data,
-            image_data,
-            action_data,
-            is_pad,
-            future_imgs_data,
-            is_pad_img,
-            is_training,  # aug or not
+        raise NotImplementedError(
+            f"Policy {policy} is not implemented for forward pass"
         )
 
 
@@ -826,6 +733,7 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
+
     if args.tokenizer_model_type in ["DV", "CV"]:
         args.tokenizer_model_name = f"Cosmos-Tokenizer-{args.tokenizer_model_type}{args.tokenizer_model_temporal_rate}x{args.tokenizer_model_spatial_rate}x{args.tokenizer_model_spatial_rate}"
     elif args.tokenizer_model_type in ["DI", "CI"]:
@@ -838,6 +746,7 @@ if __name__ == "__main__":
         args.token_dim = 6
     else:
         args.token_dim = 16
+
 
     os.makedirs(args.ckpt_dir, exist_ok=True)
     # add extra parameters

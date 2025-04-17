@@ -479,6 +479,101 @@ class EpisodicDataset_Unified_Multiview(torch.utils.data.Dataset):
 
         return image_data, qpos_data, action_data, is_pad, future_imgs_data, is_pad_img
 
+
+class EpisodicDataset_Unified_vision_tacile(torch.utils.data.Dataset):
+    """
+    only for head_camera
+    Args:
+        norm_stats: normalization stats for qpos and action
+        chunksize: chunk size
+    Output:
+        A unified dataset for all the datasets
+        image_data [0~1]: 1 Num_view C H W
+        qpos_data [normalized]: 1 D
+        action_data [raw]: chunk_size D
+        is_pad: chunk_size
+        ll_tactile_data [normalized]: C H W 
+        lr_tactile_data [normalized]: C H W 
+        rr_tactile_data [normalized]: C H W 
+        rl_tactile_data [normalized]: C H W 
+    """
+
+    def __init__(
+        self,
+        head_camera,
+        state,
+        action,
+        episode_ends,
+        stats,
+        chunk_size=50,
+    ):
+        super(EpisodicDataset_Unified_vision_tacile).__init__()
+        self.head_camera = head_camera # T H W C 
+        self.state = state
+        self.action = action
+        self.episode_ends = episode_ends
+        self.norm_stats = stats
+        self.chunk_size = chunk_size # tacile 0~189 
+    def __init__(
+        self,
+        head_camera, # N N_view C H W
+        state,
+        action,
+        tactile, # N 4 C H W
+        episode_ends,
+        stats,
+        chunk_size=50,
+        
+    ):
+        super(EpisodicDataset_Unified_vision_tacile).__init__()
+        self.head_camera = head_camera # N N_view C H W
+        self.state = state
+        self.action = action
+        self.tactile = tactile # N 4 C H W
+        self.episode_ends = episode_ends
+        self.norm_stats = stats
+        self.chunk_size = chunk_size 
+    
+    def __len__(self):
+        return len(self.head_camera)        
+    
+    def _get_episode_idx(self, idx):
+        for i, end_idx in enumerate(self.episode_ends):
+            if idx < end_idx:
+                start_idx = self.episode_ends[i - 1] if i > 0 else 0
+                end_idx = end_idx
+                return start_idx, end_idx   
+    def __getitem__(self, index):
+        start_idx, end_idx = self._get_episode_idx(index)    
+        index = min(index, end_idx - 2)
+        obs_qpos = self.state[index : index + 1] # 1 D
+        obs_img = self.head_camera[index : index + 1] # 1 N_view 3 H W 
+        obs_tacile = self.tactile[index : index + 1] # 1 4 C H W
+        original_action_shape = (self.chunk_size, *self.action.shape[1:])
+        gt_action = np.zeros(original_action_shape)
+        action_len = min(self.chunk_size, end_idx - index - 1)
+        gt_action[:action_len] = self.action[
+            index + 1 : index + 1 + action_len
+        ]
+        is_pad = np.zeros(self.chunk_size)
+        is_pad[action_len:] = 1 
+        
+        image_data = (
+            torch.from_numpy(obs_img).float()
+        )  # (1, N_view,, 3, H, W) add num_view
+        qpos_data = torch.from_numpy(obs_qpos).float()
+        action_data = torch.from_numpy(gt_action).float()
+        is_pad = torch.from_numpy(is_pad).bool()
+        tacile_data = torch.from_numpy(obs_tacile).float() # N 4 C H W
+
+        image_data = image_data / 255.0 # 1 N_view C H W
+        tacile_data = tacile_data / 200.0 # 1 4 C H W
+        qpos_data = (qpos_data - self.norm_stats["qpos_mean"]) / self.norm_stats[
+            "qpos_std"
+        ] # 1 D
+        
+        return image_data, qpos_data, action_data, is_pad, tacile_data
+
 def get_norm_stats(state, action):
     all_qpos_data = torch.from_numpy(np.array(state))
     all_action_data = torch.from_numpy(np.array(action))
@@ -764,6 +859,66 @@ def load_data_unified_multiview(
 
     return train_dataloader, val_dataloader, train_sampler, stats
 
+
+def load_data_unified_vision_tacile(
+    data_dir,
+    task_name='classify_tactile', 
+    head_camera_type='D435',
+    num_episodes=100,
+    camera_name=['head_camra'],
+    batch_size_train=32,
+    chunk_size=100,
+):
+    zarr_path = os.path.join(
+        data_dir, f"{task_name}_{head_camera_type}_{num_episodes}.zarr"
+    )
+    print(f"Loading data from {zarr_path}")
+    zarr_root = zarr.open(zarr_path, mode="r")
+    camera_image = []
+    for camera_name in camera_name:
+        camera_image.append(zarr_root[f"data/{camera_name}"])
+    head_camera = np.stack(camera_image, axis=1) # N N_view C H W 
+    state = zarr_root["data/state"]
+    action = zarr_root["data/action"]
+    episode_ends = zarr_root["meta/episode_ends"]
+    stats = get_norm_stats(state, action)
+    ll_tactile = zarr_root["data/ll_tactile"]
+    lr_tactile = zarr_root["data/lr_tactile"]
+    rl_tactile = zarr_root["data/rl_tactile"]
+    rr_tactile = zarr_root["data/rr_tactile"] # Ns C H W 
+    tactile = np.stack(
+        [ll_tactile, lr_tactile, rl_tactile, rr_tactile], axis=1
+    )  # N 4 C H W
+    print(
+        f"Train episodes: {len(episode_ends)}"
+    )
+    print(
+        f"Train samples: {episode_ends[-1]}"
+        
+    )
+    train_dataset =  EpisodicDataset_Unified_vision_tacile(
+        head_camera,
+        state,
+        action,
+        tactile,
+        episode_ends,
+        stats,
+        chunk_size,
+    )
+    train_sampler = None
+        
+    train_dataloader = DataLoader(
+        train_dataset,
+        batch_size=batch_size_train,
+        shuffle=(train_sampler is None),
+        pin_memory=True,
+        num_workers=4,
+        sampler=train_sampler,
+        prefetch_factor=2,
+    )
+    return train_dataloader, train_sampler, stats
+
+
 ### helper functions
 def convert_weigt(obj):
     newmodel = OrderedDict()
@@ -1029,9 +1184,9 @@ def extract_and_save_subset(data_dir, task_name, head_camera_type, num_episodes=
 
 
 if __name__ == "__main__":
-    task_name = "dual_shoes_place"
+    task_name = "classify_tactile"
     head_camera_type = "D435"
-    num_episodes = 10
+    num_episodes = 20
     train_ratio = 0.9
     batch_size_train = 4  # 2 min for dataloader
     batch_size_val = 4
@@ -1041,45 +1196,74 @@ if __name__ == "__main__":
     temporal_downsample_rate = 5
     predict_only_last = False
     distributed = False
-    DATA_DIR = '/attached/remote-home2/xhl/8_kaust_pj/RoboTwin/data/data_zarr'  # TODO: change this to the path of the zarr files
-    camera_names = ["head_camera", "front_camera", "left_camera", "right_camera"]
-    # camera_names = ["head_camera"]
-    train_dataloader, val_dataloader, train_sampler, stats = load_data_unified_multiview(
-        DATA_DIR,
+    camera_name=['head_camera']
+    data_dir = '/attached/remote-home2/xhl/8_kaust_pj/RoboTwin/data/data_zarr'
+    
+    train_dataloader, train_sampler, stats = load_data_unified_vision_tacile(
+        data_dir,
         task_name,
         head_camera_type,
         num_episodes,
-        camera_names,
-        train_ratio,
+        camera_name, 
         batch_size_train,
-        batch_size_val,
         chunk_size,
-        history_step,
-        predict_frame,
-        temporal_downsample_rate,
-        predict_only_last,
-        distributed,
     )
     print("Train dataloader:", len(train_dataloader))
-    print("Val dataloader:", len(val_dataloader))
-    
     for i, (
         image_data,
         qpos_data,
         action_data,
         is_pad,
-        future_imgs_data,
-        is_pad_img,
+        tacile_data,
     ) in enumerate(train_dataloader):
         print(
-            image_data.shape, # B his+1 N_view C H W
-            qpos_data.shape, # B his+1 14
-            action_data.shape,
-            is_pad.shape,
-            future_imgs_data.shape,
-            is_pad_img.shape,
+            f"Batch {i}:",
+            f"Image data shape: {image_data.shape}",  # (B, 1, N_view, C, H, W)
+            f"Qpos data shape: {qpos_data.shape}",    # (B, 1, D)
+            f"Action data shape: {action_data.shape}",  # (B, chunk_size, D)
+            f"Is pad shape: {is_pad.shape}",          # (B, chunk_size)
+            f"Tactile data shape: {tacile_data.shape}",  # (B, 1, 4, C, H, W)
         )
         break
+    # DATA_DIR = '/attached/remote-home2/xhl/8_kaust_pj/RoboTwin/data/data_zarr'  # TODO: change this to the path of the zarr files
+    # camera_names = ["head_camera", "front_camera", "left_camera", "right_camera"]
+    # # camera_names = ["head_camera"]
+    # train_dataloader, val_dataloader, train_sampler, stats = load_data_unified_multiview(
+    #     DATA_DIR,
+    #     task_name,
+    #     head_camera_type,
+    #     num_episodes,
+    #     camera_names,
+    #     train_ratio,
+    #     batch_size_train,
+    #     batch_size_val,
+    #     chunk_size,
+    #     history_step,
+    #     predict_frame,
+    #     temporal_downsample_rate,
+    #     predict_only_last,
+    #     distributed,
+    # )
+    # print("Train dataloader:", len(train_dataloader))
+    # print("Val dataloader:", len(val_dataloader))
+    
+    # for i, (
+    #     image_data,
+    #     qpos_data,
+    #     action_data,
+    #     is_pad,
+    #     future_imgs_data,
+    #     is_pad_img,
+    # ) in enumerate(train_dataloader):
+    #     print(
+    #         image_data.shape, # B his+1 N_view C H W
+    #         qpos_data.shape, # B his+1 14
+    #         action_data.shape,
+    #         is_pad.shape,
+    #         future_imgs_data.shape,
+    #         is_pad_img.shape,
+    #     )
+    #     break
     
     # train_dataloader, val_dataloader, train_sampler, stats = load_data_unified(
     #     DATA_DIR,

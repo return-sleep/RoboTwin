@@ -875,6 +875,107 @@ class DETRVAE_Denoise_Token_Prediction(nn.Module):
         return a_hat, is_pad_hat, pred_token, [mu, logvar]
 
 
+class DETRVAE_Denoise_Tactile(nn.Module):
+    def __init__(self,
+        backbones,
+        transformer,
+        tactile_encoder,
+        state_dim,
+        num_queries,
+        camera_names,):
+        super().__init__()
+        self.num_queries = num_queries
+        self.camera_names = camera_names
+        hidden_dim = transformer.d_model  # 512
+        self.hidden_dim = hidden_dim
+        self.tactile_dim = tactile_encoder.tactile_dim
+
+        # tokenize input obeservation
+        self.input_proj_robot_state = nn.Linear(14, hidden_dim)  # proprioception
+        self.input_proj = nn.Conv2d(
+            backbones[0].num_channels,
+            hidden_dim,
+            kernel_size=1,
+        )  # = MLP c h w -> c' h' w'  frame stack
+        self.backbones = nn.ModuleList(backbones)  # N encoders for N view
+        self.tactile_encoder = tactile_encoder
+        self.input_proj_tacile = nn.Linear(
+            self.tactile_dim, hidden_dim
+        )  # project latent sample to embedding
+        self.transformer = transformer
+        
+        # ouput head
+        self.action_head = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.SiLU(),
+            nn.Linear(hidden_dim, state_dim),
+        )
+        self.is_pad_head = nn.Linear(hidden_dim, 1)
+        self.query_embed = nn.Embedding(num_queries, hidden_dim)  # for decoder as PE
+        self.additional_pos_embed = nn.Embedding(
+            16+1, hidden_dim
+        )  # learned position embedding for proprio and tacile
+    
+    def forward(
+        self,
+        qpos,
+        image,
+        tactile,
+        env_state,
+        actions=None,
+        is_pad=None,
+        denoise_steps=None,
+        is_training=True,
+    ):
+        """
+        qpos: batch, 1, qpos_dim
+        image: batch, 1, num_cam, channel, height, width
+        tactile: batch, 1, 4, 3, 960, 960
+        env_state: None
+        actions: batch, seq, action_dim noisy action
+        denoise_step: int, the step of denoise
+        """
+        bs = qpos.shape[0]
+        
+        # proprioception features
+        proprio_input = self.input_proj_robot_state(qpos) # B 1 D 
+        # Image observation features and position embeddings
+        image = image.view( -1, *image.shape[2:])  #  frame stack shape: batch*T', num_cam, 3, height, width
+        all_cam_features = []
+        for cam_id, cam_name in enumerate(self.camera_names):
+            features, pos = self.backbones[cam_id](
+                image[:, cam_id]
+            )  # shape: batch*T', C, H, W
+            features = features[0]  # take the last layer feature
+            features = features.view(
+                bs, -1, *features.shape[-2:]
+            )  # shape: batch, T'*C, H, W
+            all_cam_features.append(self.input_proj(features))
+        src = torch.stack(all_cam_features, axis=-3)  # shape: batch,D,N_view, H, W
+        pos = get_nd_sincos_pos_embed_from_grid(
+            self.hidden_dim, src.shape[2:]
+        )  
+        pos = torch.from_numpy(pos).to(src.device).unsqueeze(0).float()
+        src = rearrange(src,"b d n_view h w -> b d h (w n_view)",)
+        pos = rearrange(pos,"b n_view h w d -> b d h (w n_view)",)  # will b d h*w*n_view in the following transformer
+        # tactile features
+        tactile_feature = self.tactile_encoder(tactile)  # batch, 4, D
+        tactile_input = self.input_proj_tacile(tactile_feature)  # batch, 4, D
+        hs = self.transformer(
+                src,
+                None,
+                self.query_embed.weight,
+                pos,
+                tactile_input,
+                proprio_input,
+                self.additional_pos_embed.weight,
+                actions,
+                denoise_steps,
+            )[0]
+        a_hat = self.action_head(hs)  # predict action or noise output of module
+        is_pad_hat = self.is_pad_head(hs)
+        return a_hat, is_pad_hat
+    
 class DETRVAE_Denoise_Token_Prediction_Dual_Visual_Token(nn.Module):
     """This is the DETR module that performs object detection"""
 
@@ -2623,6 +2724,13 @@ def build_encoder(args):
     return encoder
 
 
+def build_tactile_encoder(args):
+    tactile_dim = args.hidden_dim // 2
+    dropout = args.dropout
+    tactile_encoder = Tactile_Encoder(
+        tactile_dim,dropout )
+    return tactile_encoder
+
 def build(args):
     state_dim = 14  # TODO hardcode
 
@@ -2681,8 +2789,36 @@ def build_diffusion(args):
     print("number of parameters: %.2fM" % (n_parameters / 1e6,))
 
     return model
+    
 
+def build_diffusion_tactile(args):
+    state_dim = 14  # TODO hardcode
 
+    # From state
+    # backbone = None # from state for now, no need for conv nets
+    # From image
+    backbones = []
+    for camera_id in args.camera_names:
+        backbone = build_backbone(args)
+        backbones.append(backbone)
+    transformer = build_transformer_denoise(
+        args
+    )  # decoder input noisy input & PE & time_embedding
+    tactile_encoder = build_tactile_encoder(args)
+    model = DETRVAE_Denoise_Tactile(
+        backbones,
+        transformer,
+        tactile_encoder,
+        state_dim=state_dim,
+        num_queries=args.num_queries,
+        camera_names=args.camera_names,  # add additional denoise step
+    )
+
+    n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print("number of parameters: %.2fM" % (n_parameters / 1e6,))
+
+    return model
+    
 def build_diffusion_tp(args):  # token prediction
     state_dim = 14  # TODO hardcode
 

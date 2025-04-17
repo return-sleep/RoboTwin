@@ -104,7 +104,7 @@ class Transformer(nn.Module):
         tgt_mask = torch.zeros(shape_len, shape_len).to(tgt.device)
         tgt_mask[:100, 100:] = float(
             "-inf"
-        )  # 前 M 个元素对后 N 个元素的注意力设为 -inf
+        )  
         tgt_mask[100:, :100] = float("-inf")  #
         hs = self.decoder(
             tgt,
@@ -196,7 +196,7 @@ class Transformer_Denoise(nn.Module):
         # src: image embedding mask: mask
         # query_embed: decoder PE
         # pos_embed: encoder PE
-        # latent_input: vae latent
+        # latent_input: vae latent or tacile latent
         # proprio_input: proprio
         # additional_pos_embed: proprio + proprio
         # denoise_embed: denoise timestep embedding
@@ -215,7 +215,7 @@ class Transformer_Denoise(nn.Module):
             )  # seq, bs, dim
             pos_embed = torch.cat([additional_pos_embed, pos_embed], axis=0)
 
-            latent_input = latent_input.unsqueeze(1)  # B 1 D
+            latent_input = latent_input.unsqueeze(1) if len(latent_input.shape) ==2 else latent_input  # B 1 D
             addition_input = torch.cat([latent_input, proprio_input], axis=1).permute(
                 1, 0, 2
             )  #  B T+1 D -> T+1 B D
@@ -1195,7 +1195,7 @@ class Transformer_diffusion(nn.Module):
         tgt_mask = torch.zeros(seq_len, seq_len).to(tgt.device)
         tgt_mask[: -self.num_jpeg, -self.num_jpeg :] = float(
             "-inf"
-        )  # 前 M 个元素对后 N 个元素的注意力设为 -inf
+        )  
         tgt_mask[-self.num_jpeg :, : -self.num_jpeg] = float("-inf")  #
         hs = self.decoder(
             tgt,
@@ -1844,3 +1844,66 @@ def get_timestep_embedding(
         emb = torch.nn.functional.pad(emb, (0, 1, 0, 0))
 
     return emb
+
+class Tactile_ConvBlock(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super(Tactile_ConvBlock, self).__init__()
+        self.conv1 = nn.Conv2d(in_channels, out_channels//2, kernel_size=5, stride=5)
+        self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
+        self.conv2 = nn.Conv2d(out_channels//2, out_channels, kernel_size=3, stride=3)
+        self.pool2 = nn.MaxPool2d(kernel_size=2, stride=2)  
+        self.activation = nn.SiLU()
+
+    def forward(self, x):
+        x = self.conv1(x)
+        x = self.pool(x)
+        x = self.activation(x)
+        x = self.conv2(x)
+        x = self.pool2(x)
+        return x
+    
+class Tactile_Encoder(nn.Module):
+    def __init__(self,tactile_dim,dropout):
+        super().__init__()
+        self.conv_ll = Tactile_ConvBlock(3, tactile_dim)
+        self.conv_lr = Tactile_ConvBlock(3, tactile_dim)
+        self.conv_rl = Tactile_ConvBlock(3, tactile_dim)
+        self.conv_rr = Tactile_ConvBlock(3, tactile_dim)
+        self.feature_extractor = nn.ModuleList([
+            self.conv_ll,
+            self.conv_lr,
+            self.conv_rl,
+            self.conv_rr
+        ])
+        
+        self.query_tokens = nn.Parameter(torch.randn(16, tactile_dim)) 
+        self.attn = nn.MultiheadAttention(embed_dim=tactile_dim, num_heads=8, dropout=dropout,batch_first=True)
+        self.tactile_dim = tactile_dim
+        
+    def forward(self,tactile_data):
+        #B 4 C H W
+        tactile_data = tactile_data[:,0]
+        B = tactile_data.shape[0] 
+        tactile_feature_list = []
+        for i in range(tactile_data.shape[1]):
+            tactile_feature = self.feature_extractor[i](tactile_data[:,i])
+            tactile_feature_list.append(tactile_feature)
+        tactile_features_raw = torch.stack(tactile_feature_list, dim=2) # B C 4 H W
+        # print('before attention tactile feature raw shape', tactile_features_raw.shape)
+        tactile_features = tactile_features_raw.view(B, tactile_features_raw.size(1), -1)
+        # print('before attention tactile feature shape', tactile_features.shape)
+        tactile_features = tactile_features.permute(0, 2, 1) # B H*W*4 C   
+        # print('before attention tactile feature shape', tactile_features.shape)
+        query = self.query_tokens.unsqueeze(0).repeat(B, 1, 1)
+        # print('query shape', query.shape)
+        attn_output, _ = self.attn(query, tactile_features, tactile_features) # B 16 D
+        return attn_output
+    
+if __name__ == "__main__":
+    tactile_data = torch.randn(2, 4, 3, 960, 960).cuda()
+    tactile_encoder = Tactile_Encoder(512, 0.1).cuda()
+    tactile_feature = tactile_encoder(tactile_data)
+    print(tactile_feature.shape)  # B 16 D
+    total_params = sum(p.numel() for p in tactile_encoder.parameters() if p.requires_grad)
+    total_params_in_million = total_params / 1e6
+    print(f"Total trainable parameters: {total_params_in_million:.2f} M")
