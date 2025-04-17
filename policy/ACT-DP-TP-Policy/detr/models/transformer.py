@@ -262,6 +262,133 @@ class Transformer_Denoise(nn.Module):
         return hs
 
 
+class Transformer_Denoise_Tactile(nn.Module):
+    def __init__(
+        self,
+        d_model=512,
+        nhead=8,
+        num_encoder_layers=6,
+        num_decoder_layers=6,
+        dim_feedforward=2048,
+        dropout=0.1,
+        activation="relu",
+        normalize_before=False,
+        return_intermediate_dec=False,
+        causal_mask=False,
+    ):
+        super().__init__()
+        encoder_layer = TransformerEncoderLayer(
+                d_model, nhead, dim_feedforward, dropout, activation, normalize_before
+            )
+        encoder_norm = nn.LayerNorm(d_model) if normalize_before else None
+        self.encoder = TransformerEncoder(
+            encoder_layer, num_encoder_layers, encoder_norm
+        )
+
+        decoder_layer = TransformerDecoderLayer(
+            d_model, nhead, dim_feedforward, dropout, activation, normalize_before
+        )
+        decoder_norm = nn.LayerNorm(d_model)
+        self.decoder = TransformerDecoder_alter(
+            decoder_layer,
+            num_decoder_layers,
+            decoder_norm,
+            return_intermediate=return_intermediate_dec,
+        )
+
+        self.time_embed = nn.Sequential(
+            nn.Linear(d_model, d_model),
+            nn.SiLU(),
+            nn.Linear(d_model, d_model),
+        )
+        self._reset_parameters()
+
+        self.action_embed = nn.Sequential(
+            nn.Linear(14, d_model),
+            nn.SiLU(),
+            nn.Linear(d_model, d_model),
+        )
+
+        self.d_model = d_model
+        self.nhead = nhead
+        self.denoise_step_pos_embed = nn.Embedding(1, d_model)
+        self.causal_mask = causal_mask
+        print("apply causal_mask:", causal_mask)    
+    
+    def _reset_parameters(self):
+        for p in self.parameters():
+            if p.dim() > 1:
+                nn.init.xavier_uniform_(p)
+    def forward(
+        self,
+        src,
+        mask,
+        query_embed,
+        pos_embed,
+        tactile_input,
+        tactile_pos,
+        proprio_input=None,
+        additional_pos_embed=None,
+        noisy_actions=None,
+        denoise_steps=None,):
+        
+        if len(src.shape) == 4:  # has H and W b d h (w n_view)
+            # flatten NxCxHxW to HWxNxC
+            bs, c, h, w = src.shape
+            src = src.flatten(2).permute(2, 0, 1)  # h*w, bs, c
+            pos_embed = pos_embed.flatten(2).permute(2, 0, 1).repeat(1, bs, 1)
+            query_embed = query_embed.unsqueeze(1).repeat(1, bs, 1)  # N bs dim
+            
+            tactile_input = tactile_input.flatten(2).permute(2, 0, 1)  # h*w*4, bs, c
+            tactile_pos = tactile_pos.flatten(2).permute(2, 0, 1).repeat(1, bs, 1) # h*w, bs, c
+            # N_add Dim
+            additional_pos_embed = additional_pos_embed.unsqueeze(1).repeat(
+                1, bs, 1
+            )  # seq, bs, dim
+            proprio_input = proprio_input.permute(1, 0, 2) # B 1 D -> 1 B D
+            # vision-state input
+            pos_embed = torch.cat([additional_pos_embed, pos_embed], axis=0)
+            src = torch.cat([proprio_input, src], axis=0)
+            # tactile-state input
+            # print('proprio_input', proprio_input.shape, 'tactile_input', tactile_input.shape)
+            src_tactile = torch.cat([proprio_input,tactile_input], axis=0)
+            src_tactile_pos = torch.cat([additional_pos_embed,tactile_pos], axis=0)
+            
+        tgt = self.action_embed(noisy_actions).permute(
+            1, 0, 2
+        )  # TODO Change to noise tgt B T D -> T B D
+        denoise_embed = get_timestep_embedding(denoise_steps, self.d_model)  # B -> B D
+        denoise_embed = self.time_embed(denoise_embed).unsqueeze(0)  # B D -> 1 B D
+        denoise_step_pos_embed = self.denoise_step_pos_embed.weight.unsqueeze(1).repeat(
+            1, bs, 1
+        )  # 1 D -> 1 B D
+        
+        # encoder vision-state information
+        memory = self.encoder(
+            src, src_key_padding_mask=mask, pos=pos_embed
+        )  # cross attention
+        memory = torch.cat([memory, denoise_embed], axis=0)
+        pos_embed = torch.cat([pos_embed, denoise_step_pos_embed], axis=0)
+        seq_len = tgt.shape[0]
+        
+        # tactile-state information
+        memory_tactile = torch.cat([src_tactile, denoise_embed], axis=0)
+        tactile_pos_embed = torch.cat([src_tactile_pos, denoise_step_pos_embed], axis=0)
+        tgt_mask = torch.zeros(seq_len, seq_len).to(tgt.device)
+        hs = self.decoder(
+            tgt,
+            memory,
+            memory_tactile,
+            tgt_mask,
+            memory_key_padding_mask=mask,
+            pos = pos_embed,
+            pos_alter = tactile_pos_embed,
+            query_pos=query_embed,
+        )
+        hs = hs.transpose(1, 2)
+        return hs
+        
+        
 class Transformer_diffusion_prediction(nn.Module):
     def __init__(
         self,
@@ -1464,6 +1591,59 @@ class TransformerDecoder(nn.Module):
 
         return output.unsqueeze(0)
 
+class TransformerDecoder_alter(nn.Module):
+
+    def __init__(self, decoder_layer, num_layers, norm=None, return_intermediate=False):
+        super().__init__()
+        self.layers = _get_clones(decoder_layer, num_layers)
+        self.num_layers = num_layers
+        self.norm = norm
+        self.return_intermediate = return_intermediate
+
+    def forward(
+        self,
+        tgt,
+        memory,
+        memory_alter,
+        tgt_mask: Optional[Tensor] = None,
+        memory_mask: Optional[Tensor] = None,
+        tgt_key_padding_mask: Optional[Tensor] = None,
+        memory_key_padding_mask: Optional[Tensor] = None,
+        pos: Optional[Tensor] = None,
+        pos_alter: Optional[Tensor] = None,
+        query_pos: Optional[Tensor] = None,
+    ):
+        output = tgt
+        memory_list = [memory, memory_alter]
+        pos_list = [pos, pos_alter]
+        intermediate = []
+        num_layer = 0
+        for layer in self.layers:
+            index = num_layer % 2
+            output = layer(
+                output,
+                memory_list[index],
+                tgt_mask=tgt_mask,
+                memory_mask=memory_mask,
+                tgt_key_padding_mask=tgt_key_padding_mask,
+                memory_key_padding_mask=memory_key_padding_mask,
+                pos=pos_list[index],
+                query_pos=query_pos,
+            )
+            if self.return_intermediate:
+                intermediate.append(self.norm(output))
+
+        if self.norm is not None:
+            output = self.norm(output)
+            if self.return_intermediate:
+                intermediate.pop()
+                intermediate.append(output)
+
+        if self.return_intermediate:
+            return torch.stack(intermediate)
+
+        return output.unsqueeze(0)
+
 
 class TransformerEncoderLayer(nn.Module):
 
@@ -1700,6 +1880,19 @@ def build_transformer_denoise(args):
         causal_mask=args.causal_mask,
     )
 
+def build_transformer_denoise_tactile(args):
+    return Transformer_Denoise_Tactile(
+        d_model=args.hidden_dim,
+        dropout=args.dropout,
+        nhead=args.nheads,
+        dim_feedforward=args.dim_feedforward,
+        num_encoder_layers=args.enc_layers,
+        num_decoder_layers=args.dec_layers,
+        normalize_before=args.pre_norm,
+        return_intermediate_dec=True,
+        causal_mask=args.causal_mask,
+    )
+
 
 def build_transformer_diffusion_prediction(args):
     return Transformer_diffusion_prediction(
@@ -1848,18 +2041,22 @@ def get_timestep_embedding(
 class Tactile_ConvBlock(nn.Module):
     def __init__(self, in_channels, out_channels):
         super(Tactile_ConvBlock, self).__init__()
-        self.conv1 = nn.Conv2d(in_channels, out_channels//2, kernel_size=5, stride=5)
+        self.conv1 = nn.Conv2d(in_channels, out_channels//2, kernel_size=3, stride=3)
         self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
-        self.conv2 = nn.Conv2d(out_channels//2, out_channels, kernel_size=3, stride=3)
-        self.pool2 = nn.MaxPool2d(kernel_size=2, stride=2)  
+        self.conv2 = nn.Conv2d(out_channels//2, out_channels, kernel_size=5, stride=5)
+        self.pool2 = nn.AdaptiveAvgPool2d((4, 4))
         self.activation = nn.SiLU()
-
+        self.bn1 = nn.BatchNorm2d(out_channels//2)  # LN for conv1 output
+        self.bn2 = nn.BatchNorm2d(out_channels)    # LN for conv2 output
     def forward(self, x):
         x = self.conv1(x)
-        x = self.pool(x)
+        x = self.bn1(x)
         x = self.activation(x)
+        x = self.pool(x)
         x = self.conv2(x)
+        x = self.bn2(x)
         x = self.pool2(x)
+        
         return x
     
 class Tactile_Encoder(nn.Module):
@@ -1875,9 +2072,14 @@ class Tactile_Encoder(nn.Module):
             self.conv_rl,
             self.conv_rr
         ])
+        self.input_proj_tacile = nn.Conv2d(
+            tactile_dim,
+            tactile_dim,
+            kernel_size=1,
+        )
         
-        self.query_tokens = nn.Parameter(torch.randn(16, tactile_dim)) 
-        self.attn = nn.MultiheadAttention(embed_dim=tactile_dim, num_heads=8, dropout=dropout,batch_first=True)
+        # self.query_tokens = nn.Parameter(torch.randn(16, tactile_dim)) 
+        # self.attn = nn.MultiheadAttention(embed_dim=tactile_dim, num_heads=8, dropout=dropout,batch_first=True)
         self.tactile_dim = tactile_dim
         
     def forward(self,tactile_data):
@@ -1887,20 +2089,22 @@ class Tactile_Encoder(nn.Module):
         tactile_feature_list = []
         for i in range(tactile_data.shape[1]):
             tactile_feature = self.feature_extractor[i](tactile_data[:,i])
+            tactile_feature = self.input_proj_tacile(tactile_feature)
             tactile_feature_list.append(tactile_feature)
         tactile_features_raw = torch.stack(tactile_feature_list, dim=2) # B C 4 H W
         # print('before attention tactile feature raw shape', tactile_features_raw.shape)
-        tactile_features = tactile_features_raw.view(B, tactile_features_raw.size(1), -1)
+        # tactile_features = tactile_features_raw.view(B, tactile_features_raw.size(1), -1) # B C 4*H*W
         # print('before attention tactile feature shape', tactile_features.shape)
-        tactile_features = tactile_features.permute(0, 2, 1) # B H*W*4 C   
+        # tactile_features = tactile_features.permute(0, 2, 1) # B H*W*4 C   
+        return tactile_features_raw # b d 4 h w 
         # print('before attention tactile feature shape', tactile_features.shape)
-        query = self.query_tokens.unsqueeze(0).repeat(B, 1, 1)
-        # print('query shape', query.shape)
-        attn_output, _ = self.attn(query, tactile_features, tactile_features) # B 16 D
-        return attn_output
+        # query = self.query_tokens.unsqueeze(0).repeat(B, 1, 1)
+        # # print('query shape', query.shape)
+        # attn_output, _ = self.attn(query, tactile_features, tactile_features) # B 16 D
+        # return attn_output
     
 if __name__ == "__main__":
-    tactile_data = torch.randn(2, 4, 3, 960, 960).cuda()
+    tactile_data = torch.randn(2, 1, 4, 3, 960, 960).cuda()
     tactile_encoder = Tactile_Encoder(512, 0.1).cuda()
     tactile_feature = tactile_encoder(tactile_data)
     print(tactile_feature.shape)  # B 16 D

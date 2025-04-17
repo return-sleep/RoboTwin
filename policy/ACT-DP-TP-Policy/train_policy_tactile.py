@@ -378,8 +378,9 @@ def train_bc(train_dataloader, val_dataloader, config, train_sampler=None, stats
             # backward
             loss = forward_dict["loss"]
             loss.backward()
-            optimizer.step()
-            optimizer.zero_grad()
+            if batch_idx % 8 == 0: # accumulate gradient
+                optimizer.step()
+                optimizer.zero_grad()
             if config["gpu"] == 0:
                 train_history.append(detach_dict(forward_dict))
                 if config["policy_config"]["is_wandb"]:
