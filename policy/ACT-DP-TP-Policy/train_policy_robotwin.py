@@ -559,8 +559,8 @@ def forward_pass(config, data, policy, stats=None, is_training=True, downsample_
     elif isinstance(policy, ( ACTDiffusionPolicy)) or isinstance(
         getattr(policy, "module", None), (ACTDiffusionPolicy)
     ):
-        image_data = image_data #[:, -1]  # B, his+1, N, C, H, W no history TODO
-        qpos_data = qpos_data# [:, -1]  # B, his+1, N , C, H, W
+        # image_data = image_data #[:, -1]  # B, his+1, N, C, H, W no history TODO
+        # qpos_data = qpos_data# [:, -1]  # B, his+1, N , C, H, W
         # print('act_dp image_data.shape,qpos_data.shape')
         # print(image_data.shape,qpos_data.shape)
         return policy(qpos_data, image_data, action_data, is_pad, is_training)  #

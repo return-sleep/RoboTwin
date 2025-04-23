@@ -220,7 +220,7 @@ def main_alter():
     episode_ends_arrays = np.array(episode_ends_arrays)
     episode_ends_tensor = torch.tensor(episode_ends_arrays)
     episode_ends_save_path = os.path.join(save_dir,f'episode_ends.pt')
-    torch.save({'episode_ends',episode_ends_tensor},episode_ends_save_path )
+    torch.save({'episode_ends':episode_ends_tensor},episode_ends_save_path )
     
 
     all_indexes = torch.arange(episode_ends_tensor[-1])
