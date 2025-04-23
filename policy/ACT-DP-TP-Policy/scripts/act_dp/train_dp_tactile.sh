@@ -11,11 +11,12 @@
 #SBATCH --mail-type=ALL #Receive an email for ALL Job S
 
 cuda=$1
-batch_size=$2
-num_episodes=$3
+num_episodes=$2
+
+batch_size=8
 
 task_name=classify_tactile
-chunk_size=20
+chunk_size=10
 history_step=0
 
 num_epochs=300

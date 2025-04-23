@@ -400,7 +400,7 @@ def train_bc(train_dataloader, val_dataloader, config, train_sampler=None, stats
                 best_ckpt_info = (epoch, min_val_loss, deepcopy(policy.state_dict()))
                 ckpt_path = os.path.join(ckpt_dir, f"policy_best.ckpt")
                 if config["gpu"] == 0:
-                    # torch.save(policy.state_dict(), ckpt_path)
+                    torch.save(policy.state_dict(), ckpt_path)
                     if config["policy_config"]["is_wandb"]:
                         wandb.log(
                             {"Val/best_epoch": epoch, "Val/min_val_loss": min_val_loss}
@@ -632,7 +632,7 @@ if __name__ == "__main__":
         action="store",
         type=int,
         help="save_epoch",
-        default=200,
+        default=50,
         required=False,
     )
     parser.add_argument(

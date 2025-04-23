@@ -23,7 +23,7 @@ def main():
     num = args.expert_data_num
     current_ep = args.current_ep
     setting = "D435"
-    load_dir = f'data/{task_name}_{setting}'
+    load_dir = f'data_200/{task_name}_{setting}'
     
     total_count = 0
 
@@ -157,9 +157,85 @@ def main():
         zarr_data.create_dataset('lr_tactile', data=lr_tactile_arrays, chunks=tactile_chunk_size, overwrite=True, compressor=compressor)
         zarr_data.create_dataset('rl_tactile', data=rl_tactile_arrays, chunks=tactile_chunk_size, overwrite=True, compressor=compressor)
         zarr_data.create_dataset('rr_tactile', data=rr_tactile_arrays, chunks=tactile_chunk_size, overwrite=True, compressor=compressor)
+
+
+def main_alter():
+    import torch
+    parser = argparse.ArgumentParser(description='Process some episodes.')
+    parser.add_argument('task_name', type=str, default='put_bottles_dustbin',
+                        help='The name of the task (e.g., block_hammer_beat)')
+    parser.add_argument('expert_data_num', type=int, default=1,
+                        help='Number of episodes to process (e.g., 50)')
+    parser.add_argument('current_ep', type=int, default=0,
+                        help='Number of episodes to start (e.g., 50)')
+    args = parser.parse_args()
     
+    setting = "D435"
+    task_name = args.task_name
+    num = args.expert_data_num
+    current_ep = args.current_ep
+    
+    load_dir = f'data_200/{task_name}_{setting}'
+    save_dir = os.path.join('data/data_pt',f'{task_name}_{setting}')
+    os.makedirs(save_dir,exist_ok=True)
+    total_count = 0
+    
+    episode_ends_arrays = []
+    while os.path.isdir(load_dir+f'/episode{current_ep}') and current_ep < num:
+        print(f'processing episode: {current_ep + 1} / {num}', end='\r')
+        file_num = 0 
+        head_camera_arrays, state_arrays, joint_action_arrays = [], [], []
+        while os.path.exists(load_dir+f'/episode{current_ep}'+f'/{file_num}.pkl'):
+            with open(load_dir+f'/episode{current_ep}'+f'/{file_num}.pkl', 'rb') as file:
+                data = pickle.load(file)  
+            head_img = data['observation']['head_camera']['rgb']    
+            joint_action = data['joint_action']
+
+            head_camera_arrays.append(head_img)
+            state_arrays.append(joint_action)
+            joint_action_arrays.append(joint_action)
+            file_num += 1
+            total_count += 1
+            
+            del data
+        
+        head_camera_arrays = np.array(head_camera_arrays)
+        state_arrays = np.array(state_arrays)
+        joint_action_arrays = np.array(joint_action_arrays)
+        head_camera_arrays = np.moveaxis(head_camera_arrays, -1, 1)  # NHWC -> NCHW
+        save_path = os.path.join(save_dir,f'episode{current_ep}.pt')
+        
+        state_tensor = torch.tensor(state_arrays)
+        joint_action_tensor = torch.tensor(joint_action_arrays)
+        head_camera_tensor = torch.tensor(head_camera_arrays)
+        torch.save({
+            'state_arrays': state_tensor,
+            'joint_action_arrays': joint_action_tensor,
+            'head_camera_arrays': head_camera_tensor
+        }, save_path)         
+        
+        current_ep += 1
+        episode_ends_arrays.append(total_count)
+    
+    episode_ends_arrays = np.array(episode_ends_arrays)
+    episode_ends_tensor = torch.tensor(episode_ends_arrays)
+    episode_ends_save_path = os.path.join(save_dir,f'episode_ends.pt')
+    torch.save({'episode_ends',episode_ends_tensor},episode_ends_save_path )
+    
+
+    all_indexes = torch.arange(episode_ends_tensor[-1])
+    train_size = int(len(all_indexes) * 0.99)
+    indices = torch.randperm(len(all_indexes))
+    train_indices = indices[:train_size]
+    test_indices = indices[train_size:]
+    train_indices_list = train_indices.tolist()
+    test_indices_list = test_indices.tolist()
+    torch.save({'train_indices': train_indices_list, 'val_indices': test_indices_list}, save_dir +f'/train_val_split_{num}.pt')
+
+
 if __name__ == '__main__':
-    main()
+    # main()
+    main_alter()
     # load_dir = 'data/classify_tactile_D435'
     # current_ep = 0
     # file_num = 0 
