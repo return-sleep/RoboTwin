@@ -22,7 +22,6 @@ gpt_api/*
 data_200
 
 policy/weights/*
-policy/openpi/*
 !policy/weights/README.md
 down/*
 policy/ACT-DP-TP/Cosmos-Tokenizer/pretrained_ckpts*

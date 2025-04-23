@@ -4,11 +4,13 @@
 
 https://private-user-images.githubusercontent.com/88101805/393158180-9d270912-821e-48c6-91a6-dd9746c5617c.mp4
 
-<a href="https://yaomarkmu.github.io/">Yao Mu</a><sup>* †</sup>, <a href="https://tianxingchen.github.io">Tianxing Chen</a><sup>* </sup>, Zanxin Chen<sup>* </sup>, Shijia Peng<sup>*</sup>,<br>Zeyu Gao, Zhiqian Lan, Yude Zou, Lunkai Lin, Zhiqiang Xie, <a href="http://luoping.me/">Ping Luo</a><sup>†</sup>.
 
-**Final Version**, accepted to <i style="color: red; display: inline;"><b>CVPR 2025</b></i><br>
-**Early Version**, accepted to <i style="color: red; display: inline;"><b>ECCV Workshop 2024 (Best Paper)</b></i>: [Webpage](https://robotwin-benchmark.github.io/early-version) | [PDF](https://arxiv.org/pdf/2409.02920) | [arXiv](https://arxiv.org/abs/2409.02920)<br>
-<a href="https://hits.seeyoufarm.com"><img src="https://hits.seeyoufarm.com/api/count/incr/badge.svg?url=https%3A%2F%2Fgithub.com%2FTianxingChen%2FRoboTwin&count_bg=%23184FFF&title_bg=%23E116E5&icon=&icon_color=%23E7E7E7&title=Repo+Viewers&edge_flat=true"/></a>
+
+**RoboTwin 1.0 Version**, accepted to <i style="color: red; display: inline;"><b>CVPR 2025 (Highlight)</b></i>: [Website](https://robotwin-benchmark.github.io/) | [PDF](https://arxiv.org/pdf/2504.13059) | [arXiv](https://arxiv.org/abs/2504.13059)<br>
+> <a href="https://yaomarkmu.github.io/">Yao Mu</a><sup>* †</sup>, <a href="https://tianxingchen.github.io">Tianxing Chen</a><sup>* </sup>, Zanxin Chen<sup>* </sup>, <a href="https://shijiapeng03.github.io">Shijia Peng</a><sup>* </sup>, Zhiqian Lan, Zeyu Gao, Zhixuan Liang, Qiaojun Yu, Yude Zou, Mingkun Xu, Lunkai Lin, Zhiqiang Xie, Mingyu Ding, <a href="http://luoping.me/">Ping Luo</a><sup>†</sup>.
+
+**RoboTwin Early Version**, accepted to <i style="color: red; display: inline;"><b>ECCV Workshop 2024 (Best Paper)</b></i>: [Webpage](https://robotwin-benchmark.github.io/early-version) | [PDF](https://arxiv.org/pdf/2409.02920) | [arXiv](https://arxiv.org/abs/2409.02920)<br>
+> <a href="https://yaomarkmu.github.io/">Yao Mu</a><sup>* †</sup>, <a href="https://tianxingchen.github.io">Tianxing Chen</a><sup>* </sup>, Shijia Peng<sup>*</sup>, Zanxin Chen<sup>*</sup>, Zeyu Gao, Zhiqian Lan, Yude Zou, Lunkai Lin, Zhiqiang Xie, <a href="http://luoping.me/">Ping Luo</a><sup>†</sup>.
 
 **Hardware Support**: AgileX Robotics (松灵机器人)
 **Software Support**: D-robotics (地平线地瓜机器人)
@@ -18,18 +20,20 @@ https://private-user-images.githubusercontent.com/88101805/393158180-9d270912-82
 1. main Branch, [main branch](https://github.com/TianxingChen/RoboTwin/tree/main)
 2. Code Generation Branch, [gpt branch](https://github.com/TianxingChen/RoboTwin/tree/gpt)
 3. Early Version Branch, [early_version branch](https://github.com/TianxingChen/RoboTwin/tree/early_version)
+4. CVPR 2025 Challenge Branch, [CVPR-Challenge-2025 branch](https://github.com/TianxingChen/RoboTwin/tree/CVPR-Challenge-2025)
 
 ![Expert Data Generation](./files/pipeline.png)
 
 
 # 🐣 Update
-* **2025/2/27**, RoboTwin is accepted to CVPR 2025 !
-* **2025/2/15**, Update [RDT delpoyment](./policy/RDT/README.md) !
+* **2025/04/11**, Update [OpenPi deployment](./policy/openpi/README.md), and RoboTwin is seclected as <i>CVPR Highlight paper</i>!
+* **2025/02/27**, RoboTwin is accepted to <i>CVPR 2025</i> ! 
+* **2025/02/15**, Update [RDT delpoyment](./policy/RDT/README.md) !
 * **2024/12/19**, We have updated our [arXiv](https://arxiv.org/abs/2409.02920) paper and revised some of the experimental results, including simulation and Sim2Real experiments.
 * **2024/12/06**, Released the manually fine-tuned expert data collector, and all RoboTwin code is now open source. Migrated the code from the early_version to the [early_version branch](https://github.com/TianxingChen/RoboTwin/tree/early_version).
 * **2024/11/27**, Released the [gpt branch](https://github.com/TianxingChen/RoboTwin/tree/gpt), focused on generating expert data collectors for custom tasks. Note that its codebase differs slightly from the main branch.
 * **2024/10/01**, Fixed the `get_actor_goal_pose` missing bug, updated the `get_obs()` function, and improved the Diffusion Policy-related code along with the experimental results.
-* **2024/09/30**, RoboTwin (Early Version) received the Best Paper Award  at the ECCV Workshop!
+* **2024/09/30**, RoboTwin (Early Version) received <i>the Best Paper Award  at the ECCV Workshop</i>!
 * **2024/09/20**, Officially released RoboTwin.
 
 **Applications and extensions of RoboTwin from the community:**
@@ -244,6 +248,19 @@ Other Common Issues can be found in [COMMON_ISSUE](./COMMON_ISSUE.md).
 # 👍 Citation
 If you find our work useful, please consider citing:
 
+RoboTwin: Dual-Arm Robot Benchmark with Generative Digital Twins, accepted to <i style="color: red; display: inline;"><b>CVPR 2025 (Highlight)</b></i>
+```
+@misc{mu2025robotwindualarmrobotbenchmark,
+      title={RoboTwin: Dual-Arm Robot Benchmark with Generative Digital Twins}, 
+      author={Yao Mu and Tianxing Chen and Zanxin Chen and Shijia Peng and Zhiqian Lan and Zeyu Gao and Zhixuan Liang and Qiaojun Yu and Yude Zou and Mingkun Xu and Lunkai Lin and Zhiqiang Xie and Mingyu Ding and Ping Luo},
+      year={2025},
+      eprint={2504.13059},
+      archivePrefix={arXiv},
+      primaryClass={cs.RO},
+      url={https://arxiv.org/abs/2504.13059}, 
+}
+```
+
 RoboTwin: Dual-Arm Robot Benchmark with Generative Digital Twins (**early version**), accepted to <i style="color: red; display: inline;"><b>ECCV Workshop 2024 (Best Paper)</b></i>
 ```
 @article{mu2024robotwin,
@@ -258,6 +275,6 @@ RoboTwin: Dual-Arm Robot Benchmark with Generative Digital Twins (**early versio
 This repository is released under the MIT license. See [LICENSE](./LICENSE) for additional details.
 
 # 📞 中文交流群
-欢迎加入RoboTwin用户反馈与维护微信群，也可以直接添加共一作者联系方式邀请进群（请附带备注）
+欢迎加入RoboTwin用户反馈与维护微信群（群已过200人），也可以直接添加共一作者联系方式邀请进群（请附带备注）
 ![](./files/community.png)
 
