@@ -8,17 +8,18 @@ policy/3D-Diffusion-Policy/3D-Diffusion-Policy/data/
 policy/3D-Diffusion-Policy/3D-Diffusion-Policy/checkpoints/
 result/
 assets/
+ckpt_transfer.sh
 third_party/
 result_dp3/
 task_config/seeds/*.txt
 run_all_task.sh
 task_config/*
 *.zip
-
+data_200/*
 # Code Generation
 robotwin.py
 gpt_api/*
-
+data_200
 
 policy/weights/*
 policy/openpi/*
