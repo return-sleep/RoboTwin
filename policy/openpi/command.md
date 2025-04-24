@@ -1,6 +1,7 @@
 ``` python 
-source .venv/bin/activate
+conda deactivate
 cd policy/openpi/
+source .venv/bin/activate
 bash process_data_pi.sh $task_name $head_camera_type $expert_data_num # 10min
 bash generate.sh ${hdf5_path} ${repo_id} # 3min
 # change src/openpi/training/config.py Line 393
