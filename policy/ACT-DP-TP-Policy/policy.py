@@ -335,7 +335,7 @@ class ACTDiffusionPolicy(nn.Module):
         )
 
         if actions is not None:  # training time
-            image = self.aug(image) if is_training else image
+            # image = self.aug(image) if is_training else image
             image = normalize(image)
             actions = actions[:, : self.model.num_queries]
             is_pad = is_pad[:, : self.model.num_queries]

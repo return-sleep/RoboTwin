@@ -6,6 +6,9 @@ __pycache__/
 # policy/3D-Diffusion-Policy/3D-Diffusion-Policy/data/
 # policy/3D-Diffusion-Policy/3D-Diffusion-Policy/checkpoints/
 # policy/*
+policy/openpi/processed_data
+policy/openpi/wandb/*
+policy/openpi/assets/*
 result/
 third_party/
 result_dp3/
