@@ -100,8 +100,8 @@ if __name__ == "__main__":
     head_camera_type = args.head_camera_type
     num = args.expert_data_num
     
-    data_path_name = task_name+"_"+head_camera_type+"_pkl"
+    data_path_name = task_name+"_"+head_camera_type#+"_pkl"
     begin = 0
-    print(f'read data from path:{os.path.join("data/", data_path_name)}')
-    begin = data_transform(os.path.join("data/",data_path_name), num, f"./policy/openpi/processed_data/{task_name}_{head_camera_type}_{num}")
+    print(f'read data from path:{os.path.join("data_200/", data_path_name)}')
+    begin = data_transform(os.path.join("data_200/",data_path_name), num, f"./policy/openpi/processed_data/{task_name}_{head_camera_type}_{num}")
     shutil.copy(f"./data/instructions/{task_name}.json", f"./policy/openpi/processed_data/{task_name}_{head_camera_type}_{num}/instructions.json")

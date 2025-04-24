@@ -30,3 +30,4 @@ policy/ACT-DP-TP/data_zarr/*
 policy/ACT-DP-TP/misc/*
 policy/ACT-DP-TP-Policy/*
 policy/ACT-DP-TP/scripts/act_dp_tp/train.sh
+policy/openpi/processed_data/*
