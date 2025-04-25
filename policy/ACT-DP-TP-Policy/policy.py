@@ -248,6 +248,7 @@ class ACTDiffusionPolicy(nn.Module):
             (bsz,),
             device=actions.device,
         )
+        # print('action device', actions.device, 'noise device', noise.device, 'timesteps device', timesteps.device, )
         noisy_actions = self.noise_scheduler.add_noise(actions, noise, timesteps)
 
         pred, is_pad_hat, [mu, logvar] = self.model(
@@ -348,6 +349,116 @@ class ACTDiffusionPolicy(nn.Module):
 
     def configure_optimizers(self):
         return self.optimizer
+
+
+class ACT_Flow_Matching(nn.Module):
+    def __init__(self, args_override):
+        super().__init__()
+        model, optimizer = build_ACTDiffusion_model_and_optimizer(args_override)
+        self.model = model  
+        self.optimizer = optimizer
+        if "sim" in args_override["task_name"]:  # for aloha env
+            self.aug = RandomShiftsAug(15, 20)  # TODO acording to the task
+        else:
+            self.aug = RandomShiftsAug(8, 10)  # for robotwin env
+        self.history_steps = args_override["history_step"]
+        self.obs_image = deque(maxlen=self.history_steps + 1)
+        self.obs_qpos = deque(maxlen=self.history_steps + 1)
+        self.num_queries = args_override["num_queries"]
+        # flow matching steps
+        self.num_inference_steps = args_override["num_inference_steps"]
+        self.noise_scheduler = torch.distributions.Beta(1.5, 1)
+        self.loss_type = args_override["loss_type"]
+    def train_model(self, qpos, image, actions, is_pad=None):
+        """
+        qpos: B his+1 14
+        image: B his+1 N_view 3 H W 
+        """
+        env_state = None
+        noise = torch.randn_like(actions).to(actions.device)
+        bsz = actions.shape[0]
+        # refer to openpi0 
+        timesteps = self.noise_scheduler.sample((bsz,)).to(actions.device) * 0.999 + 0.001
+        timesteps_expand = timesteps[...,None,None] # B 1 1 
+        noisy_actions = timesteps_expand * noise + (1 - timesteps_expand) * actions
+
+        pred, is_pad_hat, [mu, logvar] = self.model(
+            qpos, image, env_state, noisy_actions, is_pad, denoise_steps=timesteps
+        )
+        
+        target = noise - actions # ut 
+        loss_dict = {}
+        if self.loss_type == "l2":
+            loss = F.mse_loss(pred, target, reduction="none")
+        elif self.loss_type == "l1":
+            loss = F.l1_loss(pred, target, reduction="none")
+        diffusion_loss = (loss * ~is_pad.unsqueeze(-1)).mean()
+        pred_type = 'v_pred'
+        diffusion_loss_name = pred_type + "_flow_loss_" + self.loss_type
+        loss_dict[diffusion_loss_name] = diffusion_loss
+
+        if mu is not None and logvar is not None:  # for CVAE module
+            total_kld, dim_wise_kld, mean_kld = kl_divergence(mu, logvar)
+            loss_dict["kl"] = total_kld[0]
+            loss_dict["loss"] = (
+                loss_dict[diffusion_loss_name] + loss_dict["kl"] * self.kl_weight
+            )
+        else:
+            loss_dict["loss"] = loss_dict[diffusion_loss_name]
+        return loss_dict
+
+    # ===================inferece ===============
+    def conditional_sample(self, qpos, image, is_pad):
+        """
+        diffusion process to generate actions
+        """
+        if len(image.shape) == 5:  # B N C H W
+            qpos = qpos.unsqueeze(1)
+            image = image.unsqueeze(1)
+        env_state = None
+        model = self.model
+        batch = image.shape[0]
+        action_shape = (batch, self.num_queries, 14)
+        actions = torch.randn(action_shape, device=qpos.device, dtype=qpos.dtype)
+        dt = -1.0 / self.num_inference_steps # -0.1, constant speed
+        timesteps = torch.ones(batch, device=qpos.device) 
+        while timesteps[0].item() >= -dt/2: # inferen_step
+            model_output, is_pad_hat, [mu, logvar] = model(
+            qpos,
+            image,
+            env_state,
+            actions,
+            is_pad,
+            denoise_steps=timesteps,
+            is_training=False,
+            )
+            actions += model_output * dt
+            timesteps += dt
+        return actions.clip(min=-1, max=1)
+
+    def __call__(self, qpos, image, actions=None, is_pad=None, is_training=True):
+        # qpos: B D
+        # image: B Num_view C H W
+        # actions: B T K
+        normalize = transforms.Normalize(
+            mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+        )
+
+        if actions is not None:  # training time
+            # image = self.aug(image) if is_training else image
+            image = normalize(image)
+            actions = actions[:, : self.model.num_queries]
+            is_pad = is_pad[:, : self.model.num_queries]
+            loss_dict = self.train_model(qpos, image, actions, is_pad)
+            return loss_dict
+        else:  # inference time
+            image = normalize(image)
+            a_hat = self.conditional_sample(qpos, image, is_pad)
+            return a_hat
+
+    def configure_optimizers(self):
+        return self.optimizer
+
 
 class ACTDiffusionPolicy_Tactile(nn.Module):
     def __init__(self, args_override):
@@ -1251,15 +1362,27 @@ class CNNMLPPolicy(nn.Module):
 
 if __name__ == "__main__":
 
-    from cosmos_tokenizer.networks import TokenizerConfigs
-    from cosmos_tokenizer.utils import (
-        get_filepaths,
-        get_output_filepath,
-        read_video,
-        resize_video,
-        write_video,
-    )
-
+    
+    import json
+    config_path = '/attached/remote-home2/xhl/8_kaust_pj/RoboTwin/policy/ACT-DP-TP-Policy/checkpoints/put_bottles_dustbin/single_20_2_300_600/act_dp/policy_config.json'
+    config = json.load(open(config_path, 'r'))
+    
+    policy = ACT_Flow_Matching(config)
+    
+    qpos = torch.randn(1,3, 14).to('cuda')
+    image = torch.rand(1, 3,1, 3, 480, 640).to('cuda')
+    actions = torch.randn(1, 20, 14).to('cuda')
+    is_pad = torch.zeros(1, 20).bool().to('cuda')
+    loss_dict = policy(qpos, image, actions, is_pad)
+    print(loss_dict)
+    # from cosmos_tokenizer.networks import TokenizerConfigs
+    # from cosmos_tokenizer.utils import (
+    #     get_filepaths,
+    #     get_output_filepath,
+    #     read_video,
+    #     resize_video,
+    #     write_video,
+    # )
     # # from cosmos_tokenizer.video_lib import CausalVideoTokenizer
     # from cosmos_tokenizer.image_lib import ImageTokenizer
 
@@ -1321,19 +1444,19 @@ if __name__ == "__main__":
     # print(codes.max(), codes.min())
     # reconstructed_tensor = decoder.decode(indices) # input index
     # print(reconstructed_tensor.shape)
-    model_name = "Cosmos-Tokenizer-CV4x8x8"
-    encoder = CausalVideoTokenizer(
-        checkpoint_enc=f"Cosmos-Tokenizer/pretrained_ckpts/{model_name}/encoder.jit"
-    )
-    decoder = CausalVideoTokenizer(
-        checkpoint_dec=f"Cosmos-Tokenizer/pretrained_ckpts/{model_name}/decoder.jit"
-    )
-    # B N C T H W
-    input_tensor = (
-        -torch.ones(16, 5, 3, 21, 480, 640).to("cuda").to(torch.bfloat16)
-    )  # [B, C, T, H, W]
-    for view_idx in range(5):
-        (codes,) = encoder._enc_model(input_tensor[:, view_idx])[:-1]  # B 16 T' H' W'
-        codes = codes.detach()
-        print(codes.shape)
-        print(codes.max(), codes.min())
+    # model_name = "Cosmos-Tokenizer-CV4x8x8"
+    # encoder = CausalVideoTokenizer(
+    #     checkpoint_enc=f"Cosmos-Tokenizer/pretrained_ckpts/{model_name}/encoder.jit"
+    # )
+    # decoder = CausalVideoTokenizer(
+    #     checkpoint_dec=f"Cosmos-Tokenizer/pretrained_ckpts/{model_name}/decoder.jit"
+    # )
+    # # B N C T H W
+    # input_tensor = (
+    #     -torch.ones(16, 5, 3, 21, 480, 640).to("cuda").to(torch.bfloat16)
+    # )  # [B, C, T, H, W]
+    # for view_idx in range(5):
+    #     (codes,) = encoder._enc_model(input_tensor[:, view_idx])[:-1]  # B 16 T' H' W'
+    #     codes = codes.detach()
+    #     print(codes.shape)
+    #     print(codes.max(), codes.min())

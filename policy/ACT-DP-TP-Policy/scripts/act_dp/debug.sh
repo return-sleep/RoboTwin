@@ -11,21 +11,21 @@
 #SBATCH --mail-type=ALL #Receive an email for ALL Job S
 
 task_name=$1
-cuda=$2
-batch_size=$3
-backbone=resnet50
-chunk_size=20
-history_step=0
+cuda=0
+batch_size=$2
+backbone=resnet18
+chunk_size=$3
+history_step=$4
 
 num_epochs=300
-num_episodes=100
+num_episodes=$5
 seed=0
 lr_schedule_type=cosine_warmup
 
 echo "Processing $task_name"
-CUDA_VISIBLE_DEVICES=$cuda python3 train_policy_robotwin.py \
+python3 train_policy_robotwin_debug.py \
     --task_name  $task_name \
-    --ckpt_dir checkpoints/$task_name/debug_single_${chunk_size}_${history_step}_${num_epochs}_${num_episodes}_${backbone}/act_dp \
+    --ckpt_dir checkpoints/$task_name/debug_noaug_single_${chunk_size}_${history_step}_${num_epochs}_${num_episodes}_${backbone}/act_dp \
     --policy_class ACT_diffusion --hidden_dim 512  --batch_size $batch_size --dim_feedforward 3200 \
     --chunk_size $chunk_size  --norm_type minmax --disable_vae_latent \
     --num_epochs  $num_epochs \
@@ -37,4 +37,4 @@ CUDA_VISIBLE_DEVICES=$cuda python3 train_policy_robotwin.py \
     --rank 0 \
     --gpu 0  \
     --history_step $history_step \
-    --disable_multi_view --backbone $backbone  \
+    --disable_multi_view --backbone $backbone --disable_scale \

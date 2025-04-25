@@ -15,17 +15,17 @@ from torch.nn import functional as F
 _UINT8_MAX_F = float(torch.iinfo(torch.uint8).max)
 
 
-def normalize_data(action_data, stats, norm_type, data_type="action"):
+# def normalize_data(action_data, stats, norm_type, data_type="action"):
 
-    if norm_type == "minmax":
-        action_max = torch.from_numpy(stats[data_type + "_max"]).float().cuda()
-        action_min = torch.from_numpy(stats[data_type + "_min"]).float().cuda()
-        action_data = (action_data - action_min) / (action_max - action_min) * 2 - 1
-    elif norm_type == "gaussian":
-        action_mean = torch.from_numpy(stats[data_type + "_mean"]).float().cuda()
-        action_std = torch.from_numpy(stats[data_type + "_std"]).float().cuda()
-        action_data = (action_data - action_mean) / action_std
-    return action_data
+#     if norm_type == "minmax":
+#         action_max = torch.from_numpy(stats[data_type + "_max"]).float().cuda()
+#         action_min = torch.from_numpy(stats[data_type + "_min"]).float().cuda()
+#         action_data = (action_data - action_min) / (action_max - action_min) * 2 - 1
+#     elif norm_type == "gaussian":
+#         action_mean = torch.from_numpy(stats[data_type + "_mean"]).float().cuda()
+#         action_std = torch.from_numpy(stats[data_type + "_std"]).float().cuda()
+#         action_data = (action_data - action_mean) / action_std
+#     return action_data
 
 
 def tensor2numpy(input_tensor: torch.Tensor, range_min: int = -1) -> np.ndarray:
@@ -911,6 +911,7 @@ def load_data_unified_multiview(
         pin_memory=True,
         num_workers=4,
         sampler=train_sampler,
+
     )
     val_dataloader = DataLoader(
         val_dataset,
@@ -1006,7 +1007,8 @@ def load_data_unified_multiview_from_pt(
     episode_ends_file = data_path +f'/episode_ends.pt'
     train_index = torch.load(train_val_split_file,weights_only=False)['train_indices']
     val_index = torch.load(train_val_split_file,weights_only=False)['val_indices']
-    episode_ends = torch.load(episode_ends_file,weights_only=False)['episode_ends'] 
+    episode_ends = list(torch.load(episode_ends_file,weights_only=False))[0]
+    # episode_ends = torch.load(episode_ends_file,weights_only=False)['episode_ends'] 
     print(f"Loading data from {data_path}")
     print(f"Train episodes: {len(train_index)}, Validation episodes: {len(val_index)}")
     stats_path = data_path +f'/dataset_stats.pkl'
@@ -1123,12 +1125,12 @@ def get_constant_schedule(optimizer, last_epoch: int = -1) -> LambdaLR:
 def normalize_data(action_data, stats, norm_type, data_type="action"):
 
     if norm_type == "minmax":
-        action_max = torch.from_numpy(stats[data_type + "_max"]).float().cuda()
-        action_min = torch.from_numpy(stats[data_type + "_min"]).float().cuda()
+        action_max = torch.from_numpy(stats[data_type + "_max"]).float().to(action_data.device)
+        action_min = torch.from_numpy(stats[data_type + "_min"]).float().to(action_data.device)
         action_data = (action_data - action_min) / (action_max - action_min) * 2 - 1
     elif norm_type == "gaussian":
-        action_mean = torch.from_numpy(stats[data_type + "_mean"]).float().cuda()
-        action_std = torch.from_numpy(stats[data_type + "_std"]).float().cuda()
+        action_mean = torch.from_numpy(stats[data_type + "_mean"]).float().to(action_data.device)
+        action_std = torch.from_numpy(stats[data_type + "_std"]).float().to(action_data.device)
         action_data = (action_data - action_mean) / action_std
     return action_data
 
@@ -1320,11 +1322,11 @@ def extract_and_save_subset(data_dir, task_name, head_camera_type, num_episodes=
 
 
 if __name__ == "__main__":
-    task_name = "bowls_stack"
+    task_name = "put_bottles_dustbin"
     head_camera_type = "D435"
-    num_episodes = 10
-    train_ratio = 0.9
-    batch_size_train = 64  # 2 min for dataloader
+    num_episodes = 1000
+    train_ratio = 0.99
+    batch_size_train = 128  # 2 min for dataloader
     batch_size_val = 4
     chunk_size = 20
     history_step = 0
