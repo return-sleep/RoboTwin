@@ -31,7 +31,8 @@ def main():
     if os.path.exists(save_dir):
         shutil.rmtree(save_dir)
 
-    
+    print(load_dir)
+    print(save_dir)
 
     zarr_root = zarr.group(save_dir)
     zarr_data = zarr_root.create_group('data')

@@ -1322,42 +1322,51 @@ def extract_and_save_subset(data_dir, task_name, head_camera_type, num_episodes=
 
 
 if __name__ == "__main__":
-    task_name = "put_bottles_dustbin"
-    head_camera_type = "D435"
-    num_episodes = 1000
-    train_ratio = 0.99
-    batch_size_train = 128  # 2 min for dataloader
-    batch_size_val = 4
-    chunk_size = 20
-    history_step = 0
-    predict_frame = 20
-    temporal_downsample_rate = 5
-    predict_only_last = False
-    distributed = False
-    camera_name=['head_camera']
-    data_dir = '/attached/remote-home2/xhl/8_kaust_pj/RoboTwin/data/data_pt'
-    train_dataloader, train_sampler, _, stats = load_data_unified_multiview_from_pt(
-        data_dir,
-        task_name,
-        head_camera_type,
-        num_episodes,
-        camera_name,
-        train_ratio,
-        batch_size_train,
-        batch_size_val,
-        chunk_size,
-        history_step)
-    from tqdm import tqdm
-    for i, (
-        image_data,
-        qpos_data,
-        action_data,
-        is_pad,
-        future_imgs_data,
-        is_pad_img,
-    ) in enumerate(tqdm(train_dataloader)):
-        image = image_data.cuda()
-        # print(
+    
+    zarr_root = zarr.open('/attached/remote-home2/xhl/8_kaust_pj/RoboTwin/data/data_zarr/blocks_stack_hard_D435_100.zarr', mode="r")
+    # head_camera = zarr_root["data/head_camera"]
+    state = zarr_root["data/state"]
+    action = zarr_root["data/action"]
+    episode_ends = zarr_root["meta/episode_ends"][()]
+    episode_len = episode_ends[1:] - episode_ends[:-1]
+    print(set(episode_len))
+    print(episode_ends[0])
+    # task_name = "put_bottles_dustbin"
+    # head_camera_type = "D435"
+    # num_episodes = 1000
+    # train_ratio = 0.99
+    # batch_size_train = 128  # 2 min for dataloader
+    # batch_size_val = 4
+    # chunk_size = 20
+    # history_step = 0
+    # predict_frame = 20
+    # temporal_downsample_rate = 5
+    # predict_only_last = False
+    # distributed = False
+    # camera_name=['head_camera']
+    # data_dir = '/attached/remote-home2/xhl/8_kaust_pj/RoboTwin/data/data_pt'
+    # train_dataloader, train_sampler, _, stats = load_data_unified_multiview_from_pt(
+    #     data_dir,
+    #     task_name,
+    #     head_camera_type,
+    #     num_episodes,
+    #     camera_name,
+    #     train_ratio,
+    #     batch_size_train,
+    #     batch_size_val,
+    #     chunk_size,
+    #     history_step)
+    # from tqdm import tqdm
+    # for i, (
+    #     image_data,
+    #     qpos_data,
+    #     action_data,
+    #     is_pad,
+    #     future_imgs_data,
+    #     is_pad_img,
+    # ) in enumerate(tqdm(train_dataloader)):
+    #     image = image_data.cuda()
+    #     # print(
         #     image_data.shape, # B his+1 N_view C H W
         #     qpos_data.shape, # B his+1 14
         #     action_data.shape,
