@@ -258,10 +258,155 @@ class Transformer_Denoise(nn.Module):
             pos=pos_embed,
             query_pos=query_embed,
         )  # TODO
-        hs = hs.transpose(1, 2)
+        hs = hs.transpose(1, 2) # 1 T B D -> 1 B T D
         return hs
 
 
+class Transformer_Denoise_AdLN(nn.Module):
+
+    def __init__(
+        self,
+        d_model=512,
+        nhead=8,
+        num_encoder_layers=6,
+        num_decoder_layers=6,
+        dim_feedforward=2048,
+        dropout=0.1,
+        activation="relu",
+        normalize_before=False,
+        return_intermediate_dec=False,
+        causal_mask=False,
+    ):
+        super().__init__()
+
+        encoder_layer = TransformerEncoderLayer(
+            d_model, nhead, dim_feedforward, dropout, activation, normalize_before
+        )
+        encoder_norm = nn.LayerNorm(d_model) if normalize_before else None
+        self.encoder = TransformerEncoder(
+            encoder_layer, num_encoder_layers, encoder_norm
+        )
+
+        decoder_layer = TransformerEncoderLayer_AdLN(
+            d_model, nhead, dim_feedforward, dropout, activation, normalize_before
+        )
+        decoder_norm = nn.LayerNorm(d_model)
+        self.decoder = TransformerEncoder_AdLN(
+                decoder_layer,
+            num_decoder_layers,
+            decoder_norm,
+        )
+
+        self.time_embed = nn.Sequential(
+            nn.Linear(d_model, d_model),
+            nn.SiLU(),
+            nn.Linear(d_model, d_model),
+        )
+        self._reset_parameters()
+
+        self.action_embed = nn.Sequential(
+            nn.Linear(14, d_model),
+            nn.SiLU(),
+            nn.Linear(d_model, d_model),
+        )
+
+        self.d_model = d_model
+        self.nhead = nhead
+        self.denoise_step_pos_embed = nn.Embedding(1, d_model)
+
+
+    def _reset_parameters(self):
+        for p in self.parameters():
+            if p.dim() > 1:
+                nn.init.xavier_uniform_(p)
+        # self.transformer(src, None, self.query_embed.weight, pos, latent_input, proprio_input, self.additional_pos_embed.weight,actions, denoise_steps)
+
+    def forward(
+        self,
+        src,
+        mask,
+        query_embed,
+        pos_embed,
+        latent_input=None,
+        proprio_input=None,
+        additional_pos_embed=None,
+        noisy_actions=None,
+        denoise_steps=None,
+    ):
+        # TODO flatten only when input has H and W
+        # encoder don't need change
+        # src: image embedding mask: mask
+        # query_embed: decoder PE
+        # pos_embed: encoder PE
+        # latent_input: vae latent or tacile latent
+        # proprio_input: proprio
+        # additional_pos_embed: proprio + proprio
+        # denoise_embed: denoise timestep embedding
+        # noisy_actions: noisy actions
+
+        if len(src.shape) == 4:  # has H and W b d h (w n_view)
+            # flatten NxCxHxW to HWxNxC
+            bs, c, h, w = src.shape
+            src = src.flatten(2).permute(2, 0, 1)  # h*w, bs, c
+            pos_embed = pos_embed.flatten(2).permute(2, 0, 1).repeat(1, bs, 1)
+            query_embed = query_embed.unsqueeze(1).repeat(1, bs, 1)  # N bs dim
+            # mask = mask.flatten(1)
+            # N_add Dim
+            additional_pos_embed = additional_pos_embed.unsqueeze(1).repeat(
+                1, bs, 1
+            )  # seq, bs, dim
+            pos_embed = torch.cat([additional_pos_embed, pos_embed], axis=0)
+
+            latent_input = latent_input.unsqueeze(1) if len(latent_input.shape) ==2 else latent_input  # B 1 D
+            addition_input = torch.cat([latent_input, proprio_input], axis=1).permute(
+                1, 0, 2
+            )  #  B T+1 D -> T+1 B D
+            
+            src = torch.cat([addition_input, src], axis=0)
+        else:
+            assert len(src.shape) == 3
+            # flatten NxHWxC to HWxNxC
+            bs, hw, c = src.shape
+            src = src.permute(1, 0, 2)
+            pos_embed = pos_embed.unsqueeze(1).repeat(1, bs, 1)
+            query_embed = query_embed.unsqueeze(1).repeat(1, bs, 1)
+
+        tgt = self.action_embed(noisy_actions).permute(
+            1, 0, 2
+        )  # TODO Change to noise tgt B T D -> T B D x self attetnion
+        denoise_embed = get_timestep_embedding(denoise_steps, self.d_model)  # B -> B D
+        # print(denoise_embed.shape)
+        denoise_embed = self.time_embed(denoise_embed).unsqueeze(0)  # B D -> 1 B D
+        memory = self.encoder(
+            src, src_key_padding_mask=mask, pos=pos_embed
+        )  # cross attention
+        denoise_step_pos_embed = self.denoise_step_pos_embed.weight.unsqueeze(1).repeat(
+            1, bs, 1
+        )  # 1 D -> 1 B D
+        memory = torch.cat([memory, denoise_embed], axis=0) # condition
+        pos_embed = torch.cat([pos_embed, denoise_step_pos_embed], axis=0)
+        seq_len = tgt.shape[0]
+        tgt_mask = torch.zeros(seq_len, seq_len).to(tgt.device)
+        
+        condition = memory
+        hs = self.decoder(
+            tgt,
+            condition, # condition TODO
+            src_key_padding_mask=tgt_mask, 
+            query_pos=query_embed
+        )
+        
+        # hs = self.decoder(
+        #     tgt,
+        #     memory,
+        #     tgt_mask,
+        #     memory_key_padding_mask=mask,
+        #     pos=pos_embed,
+        #     query_pos=query_embed,
+        # )  # TODO
+        hs = hs.transpose(1, 2) # 1 T B D -> 1 B T D
+        return hs
+    
 class Transformer_Denoise_Tactile(nn.Module):
     def __init__(
         self,
@@ -1541,6 +1686,38 @@ class TransformerEncoder(nn.Module):
 
         return output
 
+class TransformerEncoder_AdLN(nn.Module):
+
+    def __init__(self, encoder_layer, num_layers, norm=None):
+        super().__init__()
+        self.layers = _get_clones(encoder_layer, num_layers)
+        self.num_layers = num_layers
+        self.norm = norm
+
+    def forward(
+        self,
+        src,
+        condition,
+        mask: Optional[Tensor] = None,
+        src_key_padding_mask: Optional[Tensor] = None,
+        pos: Optional[Tensor] = None,
+    ):
+        output = src
+
+        for layer in self.layers:
+            output = layer(
+                output,
+                condition,
+                src_mask=mask,
+                src_key_padding_mask=src_key_padding_mask,
+                pos=pos,
+            )
+
+        if self.norm is not None:
+            output = self.norm(output)
+
+        return output
+    
 
 class TransformerDecoder(nn.Module):
 
@@ -1720,6 +1897,80 @@ class TransformerEncoderLayer(nn.Module):
         if self.normalize_before:
             return self.forward_pre(src, src_mask, src_key_padding_mask, pos)
         return self.forward_post(src, src_mask, src_key_padding_mask, pos)
+
+
+def modulate(x, shift, scale):
+    return x * (1 + scale.unsqueeze(0)) + shift.unsqueeze(0)
+
+class TransformerEncoderLayer_AdLN(nn.Module):
+
+    def __init__(
+        self,
+        d_model,
+        nhead,
+        dim_feedforward=2048,
+        dropout=0.1,
+        activation="relu",
+        normalize_before=True,
+    ):
+        super().__init__()
+        self.self_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout)
+        # Implementation of Feedforward model
+        self.linear1 = nn.Linear(d_model, dim_feedforward)
+        self.dropout = nn.Dropout(dropout)
+        self.linear2 = nn.Linear(dim_feedforward, d_model)
+
+        self.norm1 = nn.LayerNorm(d_model)
+        self.norm2 = nn.LayerNorm(d_model)
+        self.dropout1 = nn.Dropout(dropout)
+        self.dropout2 = nn.Dropout(dropout)
+
+        self.activation = _get_activation_fn(activation)
+        self.normalize_before = normalize_before
+        
+        self.adaLN_modulation = nn.Sequential(
+            nn.SiLU(),
+            nn.Linear(d_model, 6 * d_model, bias=True)
+        ) # neccesary for adaLN
+
+    def with_pos_embed(self, tensor, pos: Optional[Tensor]):
+        return tensor if pos is None else tensor + pos
+
+    def forward_pre(
+        self,
+        src, # B T D
+        condition, # B D
+        src_mask: Optional[Tensor] = None,
+        src_key_padding_mask: Optional[Tensor] = None,
+        pos: Optional[Tensor] = None,
+    ):
+        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.adaLN_modulation(condition).chunk(6, dim=1) # B D
+        
+        src2 = self.norm1(src)
+        src2 = modulate(src2, shift_msa, scale_msa)
+        q = k = self.with_pos_embed(src2, pos)
+        src2 = self.self_attn(
+            q, k, value=src2, attn_mask=src_mask, key_padding_mask=src_key_padding_mask
+        )[0]
+        src = src + self.dropout1(gate_msa.unsqueeze(0) *src2)
+        
+        src2 = self.norm2(src)
+        src2 = modulate(src2, shift_mlp, scale_mlp)
+        src2 = self.linear2(self.dropout(self.activation(self.linear1(src2))))
+        src = src + self.dropout2(gate_mlp.unsqueeze(0) *src2)
+        return src.unsqueeze(0)
+
+    def forward(
+        self,
+        src,
+        condition,
+        src_mask: Optional[Tensor] = None,
+        src_key_padding_mask: Optional[Tensor] = None,
+        pos: Optional[Tensor] = None,
+    ):
+
+        return self.forward_pre(src, condition,src_mask, src_key_padding_mask, pos)
+
 
 
 class TransformerDecoderLayer(nn.Module):

@@ -336,7 +336,7 @@ class ACTDiffusionPolicy(nn.Module):
         )
 
         if actions is not None:  # training time
-            # image = self.aug(image) if is_training else image
+            image = self.aug(image) if is_training else image
             image = normalize(image)
             actions = actions[:, : self.model.num_queries]
             is_pad = is_pad[:, : self.model.num_queries]
@@ -1373,7 +1373,7 @@ if __name__ == "__main__":
     image = torch.rand(1, 3,1, 3, 480, 640).to('cuda')
     actions = torch.randn(1, 20, 14).to('cuda')
     is_pad = torch.zeros(1, 20).bool().to('cuda')
-    loss_dict = policy(qpos, image, actions, is_pad)
+    loss_dict = policy(qpos, image)
     print(loss_dict)
     # from cosmos_tokenizer.networks import TokenizerConfigs
     # from cosmos_tokenizer.utils import (
