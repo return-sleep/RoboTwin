@@ -66,6 +66,12 @@ def get_args_parser():
         type=str,
         help="diffusion_timestep_type, cat or add, how to combine timestep",
     )
+    parser.add_argument(
+        "--condition_type",
+        default="cross_attention",
+        type=str,
+        help="diffusion_condition_type, cross_attention or adaLN, how to combine observation condition",
+    )
     parser.add_argument("--attention_type", default="v0", help="decoder attention type")
     parser.add_argument(
         "--causal_mask", action="store_true", help="use causal mask for diffusion"

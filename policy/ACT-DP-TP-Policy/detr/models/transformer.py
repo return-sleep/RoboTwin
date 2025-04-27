@@ -314,35 +314,26 @@ class Transformer_Denoise_AdLN(nn.Module):
         self.nhead = nhead
         self.denoise_step_pos_embed = nn.Embedding(1, d_model)
 
+        self.global_1d_pool = nn.AdaptiveAvgPool1d(1)
+        self.norm_after_pool = nn.LayerNorm(d_model)
 
     def _reset_parameters(self):
         for p in self.parameters():
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
-        # self.transformer(src, None, self.query_embed.weight, pos, latent_input, proprio_input, self.additional_pos_embed.weight,actions, denoise_steps)
 
     def forward(
         self,
-        src,
-        mask,
-        query_embed,
-        pos_embed,
-        latent_input=None,
-        proprio_input=None,
-        additional_pos_embed=None,
-        noisy_actions=None,
-        denoise_steps=None,
+        src, # B D H W*num_view
+        mask,  # None
+        query_embed, #  H D
+        pos_embed, # 1 D H W*num_view
+        latent_input=None, # B 1 D
+        proprio_input=None, # B 1 D
+        additional_pos_embed=None, # 1+1 D
+        noisy_actions=None,     # B H D
+        denoise_steps=None, # B 
     ):
-        # TODO flatten only when input has H and W
-        # encoder don't need change
-        # src: image embedding mask: mask
-        # query_embed: decoder PE
-        # pos_embed: encoder PE
-        # latent_input: vae latent or tacile latent
-        # proprio_input: proprio
-        # additional_pos_embed: proprio + proprio
-        # denoise_embed: denoise timestep embedding
-        # noisy_actions: noisy actions
 
         if len(src.shape) == 4:  # has H and W b d h (w n_view)
             # flatten NxCxHxW to HWxNxC
@@ -350,19 +341,17 @@ class Transformer_Denoise_AdLN(nn.Module):
             src = src.flatten(2).permute(2, 0, 1)  # h*w, bs, c
             pos_embed = pos_embed.flatten(2).permute(2, 0, 1).repeat(1, bs, 1)
             query_embed = query_embed.unsqueeze(1).repeat(1, bs, 1)  # N bs dim
-            # mask = mask.flatten(1)
             # N_add Dim
             additional_pos_embed = additional_pos_embed.unsqueeze(1).repeat(
                 1, bs, 1
             )  # seq, bs, dim
-            pos_embed = torch.cat([additional_pos_embed, pos_embed], axis=0)
+            pos_embed = torch.cat([additional_pos_embed, pos_embed], axis=0) # pro. + visual token PE
 
             latent_input = latent_input.unsqueeze(1) if len(latent_input.shape) ==2 else latent_input  # B 1 D
             addition_input = torch.cat([latent_input, proprio_input], axis=1).permute(
                 1, 0, 2
             )  #  B T+1 D -> T+1 B D
-            
-            src = torch.cat([addition_input, src], axis=0)
+            src = torch.cat([addition_input, src], axis=0) 
         else:
             assert len(src.shape) == 3
             # flatten NxHWxC to HWxNxC
@@ -371,39 +360,28 @@ class Transformer_Denoise_AdLN(nn.Module):
             pos_embed = pos_embed.unsqueeze(1).repeat(1, bs, 1)
             query_embed = query_embed.unsqueeze(1).repeat(1, bs, 1)
 
-        tgt = self.action_embed(noisy_actions).permute(
-            1, 0, 2
-        )  # TODO Change to noise tgt B T D -> T B D x self attetnion
-        denoise_embed = get_timestep_embedding(denoise_steps, self.d_model)  # B -> B D
-        # print(denoise_embed.shape)
-        denoise_embed = self.time_embed(denoise_embed).unsqueeze(0)  # B D -> 1 B D
         memory = self.encoder(
             src, src_key_padding_mask=mask, pos=pos_embed
-        )  # cross attention
-        denoise_step_pos_embed = self.denoise_step_pos_embed.weight.unsqueeze(1).repeat(
-            1, bs, 1
-        )  # 1 D -> 1 B D
-        memory = torch.cat([memory, denoise_embed], axis=0) # condition
-        pos_embed = torch.cat([pos_embed, denoise_step_pos_embed], axis=0)
-        seq_len = tgt.shape[0]
-        tgt_mask = torch.zeros(seq_len, seq_len).to(tgt.device)
+        )  # cross attention N B D 
+        # N B D => B D N => B D 1 => B D
+        memory = self.global_1d_pool(memory.permute(1, 2, 0)).squeeze(-1) # B D
+        memory = self.norm_after_pool(memory)
+        denoise_embed = get_timestep_embedding(denoise_steps, self.d_model)  # B -> B D
+        denoise_embed = self.time_embed(denoise_embed)  # B -> B D  
         
-        condition = memory
+        condition = memory + denoise_embed # B D as condition for modulation
+        
+        
+        tgt = self.action_embed(noisy_actions).permute(
+            1, 0, 2
+        )  
+        
         hs = self.decoder(
             tgt,
-            condition, # condition TODO
-            src_key_padding_mask=tgt_mask, 
-            query_pos=query_embed
-        )
+            condition,  
+            pos=query_embed
+        ) # Actually need is_pad?
         
-        # hs = self.decoder(
-        #     tgt,
-        #     memory,
-        #     tgt_mask,
-        #     memory_key_padding_mask=mask,
-        #     pos=pos_embed,
-        #     query_pos=query_embed,
-        # )  # TODO
         hs = hs.transpose(1, 2) # 1 T B D -> 1 B T D
         return hs
     
@@ -1716,7 +1694,7 @@ class TransformerEncoder_AdLN(nn.Module):
         if self.norm is not None:
             output = self.norm(output)
 
-        return output
+        return output.unsqueeze(0) #1 T B D
     
 
 class TransformerDecoder(nn.Module):
@@ -1958,7 +1936,7 @@ class TransformerEncoderLayer_AdLN(nn.Module):
         src2 = modulate(src2, shift_mlp, scale_mlp)
         src2 = self.linear2(self.dropout(self.activation(self.linear1(src2))))
         src = src + self.dropout2(gate_mlp.unsqueeze(0) *src2)
-        return src.unsqueeze(0)
+        return src
 
     def forward(
         self,
@@ -2119,6 +2097,18 @@ def build_transformer(args):
 
 
 def build_transformer_denoise(args):
+    print(f"Using {args.condition_type} for condition")
+    if args.condition_type == "adaLN":
+        return Transformer_Denoise_AdLN(
+            d_model=args.hidden_dim,
+            dropout=args.dropout,
+            nhead=args.nheads,
+            dim_feedforward=args.dim_feedforward,
+            num_encoder_layers=args.enc_layers,
+            num_decoder_layers=args.dec_layers,
+            normalize_before=args.pre_norm,
+            return_intermediate_dec=True,
+        )
     return Transformer_Denoise(
         d_model=args.hidden_dim,
         dropout=args.dropout,

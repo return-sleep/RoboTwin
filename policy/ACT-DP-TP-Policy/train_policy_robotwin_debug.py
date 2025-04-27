@@ -91,6 +91,7 @@ def main_worker(gpu, ngpus_per_node, args):
             "norm_type": args["norm_type"],
             "disable_vae_latent": disable_vae_latent,
             "disable_resnet": args["disable_resnet"],
+            "condition_type": args["condition_type"],
             # design diffusion parameters
             "num_inference_steps": num_inference_steps,
             "num_train_timesteps": num_train_steps,
@@ -622,6 +623,13 @@ if __name__ == "__main__":
         "--share_decoder", action="store_true", help="jpeg and action share decoder"
     )
 
+    parser.add_argument(
+        "--condition_type",
+        default="cross_attention",
+        type=str,
+        help="diffusion_condition_type, cross_attention or adaLN, how to combine observation condition",
+    )
+    
     # visual tokenizer
     parser.add_argument(
         "--tokenizer_model_type",

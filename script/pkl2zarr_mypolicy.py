@@ -23,7 +23,7 @@ def main():
     num = args.expert_data_num
     current_ep = args.current_ep
     setting = "D435"
-    load_dir = f'data/{task_name}_{setting}'
+    load_dir = f'data_200/{task_name}_{setting}'
     
     total_count = 0
 
@@ -144,6 +144,7 @@ def main():
     # front_camera_chunk_size = (100, *front_camera_arrays.shape[1:])
     # left_camera_chunk_size = (100, *left_camera_arrays.shape[1:])
     # right_camera_chunk_size = (100, *right_camera_arrays.shape[1:])
+    
     zarr_data.create_dataset('head_camera', data=head_camera_arrays, chunks=head_camera_chunk_size, overwrite=True, compressor=compressor)
     # zarr_data.create_dataset('front_camera', data=front_camera_arrays, chunks=front_camera_chunk_size, overwrite=True, compressor=compressor)
     # zarr_data.create_dataset('left_camera', data=left_camera_arrays, chunks=left_camera_chunk_size, overwrite=True, compressor=compressor)

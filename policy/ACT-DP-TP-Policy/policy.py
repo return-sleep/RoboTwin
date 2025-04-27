@@ -202,8 +202,6 @@ class ACTDiffusionPolicy(nn.Module):
         self.model = model  # CVAE decoder
         self.optimizer = optimizer
         self.kl_weight = args_override["kl_weight"]
-        print(args_override.keys())
-        print(f"KL Weight {self.kl_weight}")
         if "sim" in args_override["task_name"]:  # for aloha env
             self.aug = RandomShiftsAug(15, 20)  # TODO acording to the task
         else:
@@ -1367,7 +1365,17 @@ if __name__ == "__main__":
     config_path = '/attached/remote-home2/xhl/8_kaust_pj/RoboTwin/policy/ACT-DP-TP-Policy/checkpoints/put_bottles_dustbin/single_20_2_300_600/act_dp/policy_config.json'
     config = json.load(open(config_path, 'r'))
     
-    policy = ACT_Flow_Matching(config)
+    # policy = ACT_Flow_Matching(config)
+    
+    # qpos = torch.randn(1,3, 14).to('cuda')
+    # image = torch.rand(1, 3,1, 3, 480, 640).to('cuda')
+    # actions = torch.randn(1, 20, 14).to('cuda')
+    # is_pad = torch.zeros(1, 20).bool().to('cuda')
+    # loss_dict = policy(qpos, image)
+    # print(loss_dict)
+    
+    config['condition_type'] = "adaLN"
+    policy = ACTDiffusionPolicy(config)
     
     qpos = torch.randn(1,3, 14).to('cuda')
     image = torch.rand(1, 3,1, 3, 480, 640).to('cuda')
@@ -1375,6 +1383,8 @@ if __name__ == "__main__":
     is_pad = torch.zeros(1, 20).bool().to('cuda')
     loss_dict = policy(qpos, image)
     print(loss_dict)
+    
+    
     # from cosmos_tokenizer.networks import TokenizerConfigs
     # from cosmos_tokenizer.utils import (
     #     get_filepaths,
