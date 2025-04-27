@@ -16,14 +16,14 @@ def main():
     parser.add_argument('expert_data_num', type=int, default=50,
                         help='Number of episodes to process (e.g., 50)')
     parser.add_argument('current_ep', type=int, default=0,
-                        help='Number of episodes to start (e.g., 50)')
+                        help='Number of episodes to start (e.g., 0)')
     args = parser.parse_args()
 
     task_name = args.task_name
     num = args.expert_data_num
     current_ep = args.current_ep
     setting = "D435"
-    load_dir = f'data_200/{task_name}_{setting}'
+    load_dir = f'data/{task_name}_{setting}'
     
     total_count = 0
 
@@ -234,8 +234,8 @@ def main_alter():
 
 
 if __name__ == '__main__':
-    # main()
-    main_alter()
+    main()
+    # main_alter()
     # load_dir = 'data/classify_tactile_D435'
     # current_ep = 0
     # file_num = 0 
