@@ -27,7 +27,7 @@ CUDA_VISIBLE_DEVICES=$cuda python3 train_policy_robotwin.py \
     --policy_class ACT_diffusion --hidden_dim 512  --batch_size $batch_size --dim_feedforward 3200 \
     --chunk_size $chunk_size  --norm_type minmax --disable_vae_latent \
     --num_epochs  $num_epochs \
-    --lr 5e-5  --lr_schedule_type $lr_schedule_type  \
+    --lr 1e-4  --lr_schedule_type $lr_schedule_type  \
     --seed $seed --num_episodes $num_episodes  \
     --kl_weight 10 \
     --dist-url 'tcp://localhost:10001' \

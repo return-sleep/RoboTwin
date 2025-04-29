@@ -16,7 +16,7 @@ num_episodes=$2
 batch_size=8
 
 task_name=classify_tactile
-chunk_size=10
+chunk_size=20
 history_step=0
 
 num_epochs=300

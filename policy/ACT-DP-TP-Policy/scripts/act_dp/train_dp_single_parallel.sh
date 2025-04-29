@@ -24,7 +24,7 @@ seed=0
 lr_schedule_type=cosine_warmup
 
 echo "Processing $task_name"
-python3 train_policy_robotwin_debug.py \
+CUDA_VISIBLE_DEVICES=0,1,3,5,6,7 python3 train_policy_robotwin_debug.py \
     --task_name  $task_name \
     --ckpt_dir checkpoints/$task_name/single_${chunk_size}_${history_step}_${num_epochs}_${num_episodes}_${backbone}/act_dp \
     --policy_class ACT_diffusion --hidden_dim 512  --batch_size $batch_size --dim_feedforward 3200 \

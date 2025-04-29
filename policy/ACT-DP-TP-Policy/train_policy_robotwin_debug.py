@@ -192,7 +192,11 @@ def main_worker(gpu, ngpus_per_node, args):
 
     # save best checkpoint no need for scripted data, all in
     ckpt_path = os.path.join(ckpt_dir, f"policy_best.ckpt")
-    torch.save(best_state_dict, ckpt_path)
+    best_ckpt_save =  {
+                "state_dict": best_state_dict,
+                "stats": stats,   
+            }
+    torch.save(best_ckpt_save, ckpt_path)
     log_message = f"Best ckpt, val loss {min_val_loss:.6f} @ epoch {best_epoch}"
     print(log_message)
 
@@ -443,15 +447,26 @@ def forward_pass(config, data, policy, stats=None, is_training=True, downsample_
         return policy(qpos_data, image_data, action_data, is_pad, is_training)  #
     elif isinstance(policy, ( ACTDiffusionPolicy)) or isinstance(
         getattr(policy, "module", None), (ACTDiffusionPolicy)
-    ):
-        # image_data = image_data #[:, -1]  # B, his+1, N, C, H, W no history TODO
-        # qpos_data = qpos_data# [:, -1]  # B, his+1, N , C, H, W
-        # print('act_dp image_data.shape,qpos_data.shape')
-        # print(image_data.shape,qpos_data.shape)
+    ):  
+        if image_data.shape[-1] == 160: # 129*160 -> 240*320
+            original_image_shape = image_data.shape
+            # print("original_image_shape:", original_image_shape)
+            image_data = torch.nn.functional.interpolate(
+                image_data.view(-1, *image_data.shape[-3:]), # B N*T C H W
+                scale_factor=2,
+                mode="bilinear",
+                align_corners=False,
+            )
+            # print("image_data.shape:", image_data.shape)
+            image_data = image_data.view(
+                *original_image_shape[:-3],
+                3,
+                240,
+                320,
+            )
         return policy(qpos_data, image_data, action_data, is_pad, is_training)  #
     else:
-        # print('image_data.shape,future_imgs_data.shape')
-        # print(image_data.shape,future_imgs_data.shape)
+        
         return policy(
             qpos_data,
             image_data,

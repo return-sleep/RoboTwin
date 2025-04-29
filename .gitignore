@@ -23,6 +23,7 @@ viewer_show.*
 weights/
 eval_video/
 down/*
+*.avi
 # tmp
 base_task_bac.py
 _tmp_save_pic.py

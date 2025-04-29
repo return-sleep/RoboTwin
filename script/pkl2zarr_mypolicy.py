@@ -23,7 +23,7 @@ def main():
     num = args.expert_data_num
     current_ep = args.current_ep
     setting = "D435"
-    load_dir = f'data_200/{task_name}_{setting}'
+    load_dir = f'data/{task_name}_{setting}'
     
     total_count = 0
 
@@ -68,11 +68,11 @@ def main():
             state_arrays.append(joint_action)
             joint_action_arrays.append(joint_action)
             
-            if task_name == 'classify_tactile':
-                ll_tactile_arrays.append(data['vision_tactile']['ll_tactile']['rgb'])
-                lr_tactile_arrays.append(data['vision_tactile']['lr_tactile']['rgb'])   
-                rl_tactile_arrays.append(data['vision_tactile']['rl_tactile']['rgb'])
-                rr_tactile_arrays.append(data['vision_tactile']['rr_tactile']['rgb'])
+            # if task_name == 'classify_tactile':
+            #     ll_tactile_arrays.append(data['vision_tactile']['ll_tactile']['rgb'])
+            #     lr_tactile_arrays.append(data['vision_tactile']['lr_tactile']['rgb'])   
+            #     rl_tactile_arrays.append(data['vision_tactile']['rl_tactile']['rgb'])
+            #     rr_tactile_arrays.append(data['vision_tactile']['rr_tactile']['rgb'])
 
             file_num += 1
             total_count += 1
@@ -93,23 +93,23 @@ def main():
     # right_camera_arrays = np.array(right_camera_arrays)
     joint_action_arrays = np.array(joint_action_arrays)
 
-    head_camera_arrays = np.moveaxis(head_camera_arrays, -1, 1)  # NHWC -> NCHW
+    head_camera_arrays = np.moveaxis(head_camera_arrays, -1, 1)#[...,::2,::2]  # NHWC -> NCHW
     # front_camera_arrays = np.moveaxis(front_camera_arrays, -1, 1)  # NHWC -> NCHW
     # left_camera_arrays = np.moveaxis(left_camera_arrays, -1, 1)  # NHWC -> NCHW
     # right_camera_arrays = np.moveaxis(right_camera_arrays, -1, 1)  # NHWC -> NCHW
     
     
     
-    if task_name == 'classify_tactile':
-        ll_tactile_arrays = np.array(ll_tactile_arrays) 
-        lr_tactile_arrays = np.array(lr_tactile_arrays)
-        rl_tactile_arrays = np.array(rl_tactile_arrays)
-        rr_tactile_arrays = np.array(rr_tactile_arrays)
+    # if task_name == 'classify_tactile':
+    #     ll_tactile_arrays = np.array(ll_tactile_arrays) 
+    #     lr_tactile_arrays = np.array(lr_tactile_arrays)
+    #     rl_tactile_arrays = np.array(rl_tactile_arrays)
+    #     rr_tactile_arrays = np.array(rr_tactile_arrays)
 
-        ll_tactile_arrays = np.moveaxis(ll_tactile_arrays, -1, 1) #  NHWC -> NCHW
-        lr_tactile_arrays = np.moveaxis(lr_tactile_arrays, -1, 1)
-        rl_tactile_arrays = np.moveaxis(rl_tactile_arrays, -1, 1)
-        rr_tactile_arrays = np.moveaxis(rr_tactile_arrays, -1, 1)
+    #     ll_tactile_arrays = np.moveaxis(ll_tactile_arrays, -1, 1) #  NHWC -> NCHW
+    #     lr_tactile_arrays = np.moveaxis(lr_tactile_arrays, -1, 1)
+    #     rl_tactile_arrays = np.moveaxis(rl_tactile_arrays, -1, 1)
+    #     rr_tactile_arrays = np.moveaxis(rr_tactile_arrays, -1, 1)
     
     pre_save_dir = f'data/data_zarr/{task_name}_{setting}_{args.current_ep}.zarr'
     
@@ -119,21 +119,21 @@ def main():
         pre_state_arrays = zarr_root["data/state"] # B C H W
         pre_joint_action_arrays = zarr_root["data/action"]
         pre_episode_ends_arrays = zarr_root["meta/episode_ends"]
-        pre_head_camera_arrays = zarr_root["data/head_camera"]
+        pre_head_camera_arrays = zarr_root["data/head_camera"]#[...,::2,::2]
         
         state_arrays = np.concatenate((pre_state_arrays, state_arrays), axis=0)
         joint_action_arrays = np.concatenate((pre_joint_action_arrays, joint_action_arrays), axis=0)
         episode_ends_arrays = np.concatenate((pre_episode_ends_arrays, episode_ends_arrays), axis=0)
         head_camera_arrays = np.concatenate((pre_head_camera_arrays, head_camera_arrays), axis=0)
-        if task_name == 'classify_tactile':
-            pre_ll_tactile_arrays = zarr_root["data/ll_tactile"]
-            pre_lr_tactile_arrays = zarr_root["data/lr_tactile"]
-            pre_rl_tactile_arrays = zarr_root["data/rl_tactile"]
-            pre_rr_tactile_arrays = zarr_root["data/rr_tactile"]
-            ll_tactile_arrays = np.concatenate((pre_ll_tactile_arrays, ll_tactile_arrays), axis=0)
-            lr_tactile_arrays = np.concatenate((pre_lr_tactile_arrays, lr_tactile_arrays), axis=0)
-            rl_tactile_arrays = np.concatenate((pre_rl_tactile_arrays, rl_tactile_arrays), axis=0)
-            rr_tactile_arrays = np.concatenate((pre_rr_tactile_arrays, rr_tactile_arrays), axis=0)
+        # if task_name == 'classify_tactile':
+        #     pre_ll_tactile_arrays = zarr_root["data/ll_tactile"]
+        #     pre_lr_tactile_arrays = zarr_root["data/lr_tactile"]
+        #     pre_rl_tactile_arrays = zarr_root["data/rl_tactile"]
+        #     pre_rr_tactile_arrays = zarr_root["data/rr_tactile"]
+        #     ll_tactile_arrays = np.concatenate((pre_ll_tactile_arrays, ll_tactile_arrays), axis=0)
+        #     lr_tactile_arrays = np.concatenate((pre_lr_tactile_arrays, lr_tactile_arrays), axis=0)
+        #     rl_tactile_arrays = np.concatenate((pre_rl_tactile_arrays, rl_tactile_arrays), axis=0)
+        #     rr_tactile_arrays = np.concatenate((pre_rr_tactile_arrays, rr_tactile_arrays), axis=0)
     
     print('begin to save zarr')        
     compressor = zarr.Blosc(cname='zstd', clevel=3, shuffle=1)
@@ -153,12 +153,12 @@ def main():
     zarr_data.create_dataset('state', data=state_arrays, chunks=state_chunk_size, dtype='float32', overwrite=True, compressor=compressor)
     zarr_data.create_dataset('action', data=joint_action_arrays, chunks=joint_chunk_size, dtype='float32', overwrite=True, compressor=compressor)
     zarr_meta.create_dataset('episode_ends', data=episode_ends_arrays, dtype='int64', overwrite=True, compressor=compressor)
-    if task_name == 'classify_tactile':
-        tactile_chunk_size = (100, *ll_tactile_arrays.shape[1:]) 
-        zarr_data.create_dataset('ll_tactile', data=ll_tactile_arrays, chunks=tactile_chunk_size, overwrite=True, compressor=compressor)
-        zarr_data.create_dataset('lr_tactile', data=lr_tactile_arrays, chunks=tactile_chunk_size, overwrite=True, compressor=compressor)
-        zarr_data.create_dataset('rl_tactile', data=rl_tactile_arrays, chunks=tactile_chunk_size, overwrite=True, compressor=compressor)
-        zarr_data.create_dataset('rr_tactile', data=rr_tactile_arrays, chunks=tactile_chunk_size, overwrite=True, compressor=compressor)
+    # if task_name == 'classify_tactile':
+    #     tactile_chunk_size = (100, *ll_tactile_arrays.shape[1:]) 
+    #     zarr_data.create_dataset('ll_tactile', data=ll_tactile_arrays, chunks=tactile_chunk_size, overwrite=True, compressor=compressor)
+    #     zarr_data.create_dataset('lr_tactile', data=lr_tactile_arrays, chunks=tactile_chunk_size, overwrite=True, compressor=compressor)
+    #     zarr_data.create_dataset('rl_tactile', data=rl_tactile_arrays, chunks=tactile_chunk_size, overwrite=True, compressor=compressor)
+    #     zarr_data.create_dataset('rr_tactile', data=rr_tactile_arrays, chunks=tactile_chunk_size, overwrite=True, compressor=compressor)
 
 
 def main_alter():
