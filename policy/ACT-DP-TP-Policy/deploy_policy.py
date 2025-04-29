@@ -10,7 +10,7 @@ import numpy as np
 import mediapy as media
 from collections import deque
 from detr.main import *
-from utils_robotwin import normalize_data, tensor2numpy, kl_divergence, RandomShiftsAug
+from utils_robotwin import normalize_data, convert_weigt
 import warnings
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
@@ -79,11 +79,13 @@ class ACTDiffusionPolicy(nn.Module):
     def __init__(self, args_override):
         super().__init__()
         args_override["num_queries"] = args_override["chunk_size"]
+        args_override["dec_layers"] = 7
+        # args_override["history_step"] = args_override["chunk_size"]
         model, optimizer = build_ACTDiffusion_model_and_optimizer(args_override)
         self.model = model  # CVAE decoder
         self.camera_num = len(args_override["camera_names"])
-        self.obs_image = None
-        self.obs_qpos = None
+        self.obs_image = deque(maxlen=args_override["history_step"] + 1)
+        self.obs_qpos = deque(maxlen=args_override["history_step"] + 1)
         # diffusion setup
         self.num_inference_steps = args_override["num_inference_steps"]
         self.num_queries = args_override["num_queries"]
@@ -150,22 +152,28 @@ class ACTDiffusionPolicy(nn.Module):
         self.norm_type = norm_type
 
     def update_obs(self, obs):
-        # self.obs_image = (
-        #     torch.from_numpy(obs["head_cam"]).unsqueeze(0).unsqueeze(0).float().cuda()
-        # )  # 1 1 C H W 0~1
         image_data_list = []
         for camera_name in self.model.camera_names:
             assert camera_name in obs, f"camera {camera_name} not in obs"
             camera_image = torch.from_numpy(obs[camera_name]).float().cuda()
             image_data_list.append(camera_image)
-        self.obs_image = torch.stack(image_data_list, dim=0).unsqueeze(0)  # B N C H W
-        obs_qpos = torch.from_numpy(obs["agent_pos"]).unsqueeze(0).float().cuda()
-        self.obs_qpos = normalize_data(
+        obs_image = torch.stack(image_data_list, dim=0).unsqueeze(0)  # B N C H W
+        obs_qpos = torch.from_numpy(obs["agent_pos"]).unsqueeze(0).float().cuda() # B D
+        obs_qpos = normalize_data(
             obs_qpos, self.stats, "gaussian", data_type="qpos"
         )  # qpos mean std
-
+        if len(self.obs_image) == 0:
+            for _ in range(self.model.history_step + 1):
+                self.obs_image.append(obs_image)
+                self.obs_qpos.append(obs_qpos)
+        else:
+            self.obs_image.append(obs_image)
+            self.obs_qpos.append(obs_qpos)
+        
     def get_action(self):
-        a_hat = self(self.obs_qpos, self.obs_image).detach().cpu().numpy()  # B T K
+        obs_qpos = torch.stack(list(self.obs_qpos), dim=1)  # 1 n+1 14
+        obs_image = torch.stack(list(self.obs_image), dim=1)
+        a_hat = self(obs_qpos, obs_image).detach().cpu().numpy()  # B T K
         # unnormalize
         if self.norm_type == "minmax":
             a_hat = (a_hat + 1) / 2 * (
@@ -410,11 +418,12 @@ class ACT_DP:
             policy_config = json.load(file)
         policy = ACTDiffusionPolicy(policy_config)
         policy.load_state_dict(
-            torch.load(ckpt_file, map_location=device)["state_dict"], strict=False
+            convert_weigt(torch.load(ckpt_file, map_location=device,weights_only=False)["state_dict"]), strict=False
         )
-        stats = torch.load(ckpt_file)["stats"]
+        stats = torch.load(ckpt_file,weights_only=False)["stats"]
         norm_type = policy_config["norm_type"]
         policy.norm_type = norm_type
+        print("norm_type", norm_type)
         policy.stats = stats
         device = torch.device(device)
         policy.eval()
@@ -527,7 +536,7 @@ def reset_model(model):
 
 
 if __name__ == "__main__":
-    ckpt_folder = "checkpoints/bottle_adjust/act_dp_tp/20_20_5_4_cosine_warmup/seed_0/num_epochs_300"
+    ckpt_folder = "checkpoints/classify_tactile/single_20_0_300_60/act_dp"
     model = get_model(ckpt_folder)
 
     obs_agent = np.random.rand(14).astype(np.float32)

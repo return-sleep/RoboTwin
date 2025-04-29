@@ -2098,6 +2098,7 @@ def build_transformer(args):
 
 def build_transformer_denoise(args):
     print(f"Using {args.condition_type} for condition")
+    print(f'enc_layers: {args.enc_layers}, dec_layers: {args.dec_layers}')
     if args.condition_type == "adaLN":
         return Transformer_Denoise_AdLN(
             d_model=args.hidden_dim,
