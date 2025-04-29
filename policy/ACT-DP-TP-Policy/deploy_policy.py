@@ -9,8 +9,8 @@ from diffusers import DDIMScheduler, DDPMScheduler
 import numpy as np
 import mediapy as media
 from collections import deque
-from detr.main import *
-from utils_robotwin import normalize_data, convert_weigt
+from .detr.main import *
+from .utils_robotwin import normalize_data, convert_weigt
 import warnings
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
@@ -488,7 +488,7 @@ def encode_obs(observation):  # For ACT-DP DP
     return obs
 
 
-def get_model(ckpt_folder):
+def get_model(ckpt_folder, task_name=None):
     # f"./policy/{policy_name}/checkpoints/", usr_args.ckpt_folder
     print("ckpt_folder: ", ckpt_folder)
     policy_subname = ckpt_folder.split("/")[-1]
