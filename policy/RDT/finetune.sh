@@ -59,6 +59,9 @@ fi
 
 export CUDA_VISIBLE_DEVICES=$CUDA_USE
 
+echo "export CUDA_VISIBLE_DEVICES=$CUDA_USE"
+
+
 python -m data.compute_dataset_stat_hdf5 --task_name $CONFIG_NAME
 
 accelerate launch --main_process_port=28499  main.py \
@@ -85,5 +88,6 @@ accelerate launch --main_process_port=28499  main.py \
     --precomp_lang_embed \
     --gradient_accumulation_steps=$GRAD_ACCUM_STEPS \
     --model_config_path=$CONFIG_FILE \
-    --CONFIG_NAME=$CONFIG_NAME
+    --CONFIG_NAME=$CONFIG_NAME \
+    
 

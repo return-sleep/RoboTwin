@@ -37,8 +37,10 @@ def data_transform(path, episode_num, save_path):
 
     if not os.path.exists(save_path):
         os.makedirs(save_path)
-
-    for i in range(episode_num):
+    # episode_num = 8 # 18 19 20 24 26 27 28 29
+    # for i in range(episode_num):
+    i = 0
+    while i < episode_num:
         subfolder_name = f"episode{i}"
         subfolder_path = os.path.join(path, subfolder_name)
         qpos = []
@@ -83,23 +85,28 @@ def data_transform(path, episode_num, save_path):
                 cam_left_wrist.append(camera_left_wrist_resized)
 
         hdf5path = os.path.join(save_path, f"episode_{i}.hdf5")
-        with h5py.File(hdf5path, "w") as f:
-            f.create_dataset("action", data=np.array(actions))
-            obs = f.create_group("observations")
-            obs.create_dataset("qpos", data=np.array(qpos))
-            image = obs.create_group("images")
-            cam_high_enc, len_high = images_encoding(cam_high)
-            cam_right_wrist_enc, len_right = images_encoding(cam_right_wrist)
-            cam_left_wrist_enc, len_left = images_encoding(cam_left_wrist)
-            image.create_dataset("cam_high", data=cam_high_enc, dtype=f"S{len_high}")
-            image.create_dataset(
-                "cam_right_wrist", data=cam_right_wrist_enc, dtype=f"S{len_right}"
-            )
-            image.create_dataset(
-                "cam_left_wrist", data=cam_left_wrist_enc, dtype=f"S{len_left}"
-            )
-        begin += 1
-        print(f"proccess {i} success!")
+        try:
+            with h5py.File(hdf5path, "w") as f:
+                f.create_dataset("action", data=np.array(actions))
+                obs = f.create_group("observations")
+                obs.create_dataset("qpos", data=np.array(qpos))
+                image = obs.create_group("images")
+                cam_high_enc, len_high = images_encoding(cam_high)
+                cam_right_wrist_enc, len_right = images_encoding(cam_right_wrist)
+                cam_left_wrist_enc, len_left = images_encoding(cam_left_wrist)
+                image.create_dataset("cam_high", data=cam_high_enc, dtype=f"S{len_high}")
+                image.create_dataset(
+                    "cam_right_wrist", data=cam_right_wrist_enc, dtype=f"S{len_right}"
+                )
+                image.create_dataset(
+                    "cam_left_wrist", data=cam_left_wrist_enc, dtype=f"S{len_left}"
+                )
+            begin += 1
+            i += 1
+            print(f"proccess {i} success!")
+        except Exception as e:
+            print(f"Error processing episode {i}: {e}")
+            
     return begin
 
 
@@ -134,6 +141,7 @@ if __name__ == "__main__":
         num,
         f"./policy/RDT/processed_data/{task_name}_{head_camera_type}_{num}",
     )
+    
     encode_lang(
         task_name, f"policy/RDT/processed_data/{task_name}_{head_camera_type}_{num}/", 0
     )  # offline process save_path = os.path.join(TARGET_DIR, f"instructions/lang_embed_{i}.pt")

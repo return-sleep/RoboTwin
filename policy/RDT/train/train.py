@@ -100,6 +100,10 @@ def train(args, logger):
         project_dir=logging_dir,
         project_config=accelerator_project_config,
     )
+    
+    print(f"[Accelerate] Available devices: {accelerator.device}")
+    print(f"[Accelerate] Total processes (GPUs used): {accelerator.num_processes}")
+    print(f"[Accelerate] Local process index: {accelerator.local_process_index}")
 
     if args.report_to == "wandb":
         if not is_wandb_available():
@@ -267,15 +271,15 @@ def train(args, logger):
     train_dataset = VLAConsumerDataset(
         model_config_path=args.model_config_path,  # TODO
         config=config["dataset"],
-        tokenizer=tokenizer,
+        tokenizer=tokenizer, # for language embedding
         image_processor=image_processor,  # image encoder
         num_cameras=config["common"]["num_cameras"],
         img_history_size=config["common"]["img_history_size"],
-        dataset_type=args.dataset_type,
+        dataset_type=args.dataset_type, # pretrain or finetune
         image_aug=args.image_aug,
         cond_mask_prob=args.cond_mask_prob,  # randomly mask the condition
         cam_ext_mask_prob=args.cam_ext_mask_prob,
-        state_noise_snr=args.state_noise_snr,
+        state_noise_snr=args.state_noise_snr, # add noise to state
         use_hdf5=args.load_from_hdf5,
         use_precomp_lang_embed=args.precomp_lang_embed,
     )
@@ -295,7 +299,7 @@ def train(args, logger):
         use_precomp_lang_embed=args.precomp_lang_embed,
     )
 
-    data_collator = DataCollatorForVLAConsumerDataset(tokenizer)
+    data_collator = DataCollatorForVLAConsumerDataset(tokenizer) # transform dict to torch.tensor dict
 
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset,
@@ -356,7 +360,7 @@ def train(args, logger):
     if overrode_max_train_steps:
         args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
     # Afterwards we recalculate our number of training epochs
-    args.num_train_epochs = math.ceil(args.max_train_steps / num_update_steps_per_epoch)
+    args.num_train_epochs = math.ceil(args.max_train_steps / num_update_steps_per_epoch) # scale data size
 
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
