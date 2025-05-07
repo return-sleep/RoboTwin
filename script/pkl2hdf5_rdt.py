@@ -135,9 +135,9 @@ if __name__ == "__main__":
 
     data_path_name = task_name + "_" + head_camera_type + "_pkl"
     begin = 0
-    print(f'read data from path:{os.path.join("data/", data_path_name)}')
+    print(f'read data from path:{os.path.join("/remote-home/xhl/Embodied_AI/0_Bimanual_Policy/ICCV_2025/RoboTwin/data/", data_path_name)}')
     begin = data_transform(
-        os.path.join("data/", data_path_name),
+        os.path.join("/remote-home/xhl/Embodied_AI/0_Bimanual_Policy/ICCV_2025/RoboTwin/data/", data_path_name),
         num,
         f"./policy/RDT/processed_data/{task_name}_{head_camera_type}_{num}",
     )
