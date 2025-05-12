@@ -14,7 +14,7 @@ parent_dir = current_file.parent
 sys.path.append(str(parent_dir))
 
 import os
-
+import glob
 import argparse
 
 import threading
@@ -83,16 +83,24 @@ class RDT:
         self.tokenizer, self.text_encoder = text_embedder.tokenizer, text_embedder.model
     
     # set language randomly
-    def random_set_language(self):
+    def random_set_language(self, index= None):
         json_Path =f"data/instructions/{self.task_name}.json"
         with open(json_Path, 'r') as f_instr:
             instruction_dict = json.load(f_instr)
         instructions = instruction_dict['instructions']
-        instruction = np.random.choice(instructions)
-        self.set_language_instruction(instruction)
+        instruction = np.random.choice(instructions) if index is None else instructions[index]
+        print(f"Randomly set instruction: {instruction}")
+        save_dir = '/attached/remote-home2/xhl/8_kaust_pj/RoboTwin/policy/RDT/training_data/instruction_pt_files'
+        self.set_language_instruction(instruction,save_dir=save_dir,task_name=self.task_name,index=index)
+        
+        # instruction_pt_files = glob.glob(os.path.join('policy/RDT/training_data/instruction_pt_files', f"{self.task_name}_*.pt"))
+        # instruction_pt_file = np.random.choice(instruction_pt_files)
+        # print(f"Randomly select pt file: {instruction_pt_file}")
+        # self.set_language_instruction(instruction_pt_file)
+        
         
     # encoding language 
-    def set_language_instruction(self, language_instruction, save_dir=None,task_name=None):
+    def set_language_instruction(self, language_instruction, save_dir=None, task_name=None, index= None):
         assert ((save_dir is None) ^ (task_name is None)) == False, "input error"
         if os.path.isfile(language_instruction):
             lang_dict = torch.load(language_instruction)
@@ -110,7 +118,7 @@ class RDT:
             with torch.no_grad():
                 pred = self.text_encoder(tokens).last_hidden_state.detach().cpu()
             if save_dir != None:
-                save_path = os.path.join(save_dir,f"{task_name}.pt")
+                save_path = os.path.join(save_dir,f"{task_name}_{index}.pt")
                 torch.save({
                     "name": task_name,
                     "instruction": language_instruction,
@@ -118,6 +126,7 @@ class RDT:
                     }, save_path
                 )
             self.lang_embeddings = pred
+            print('successfully set instruction save to:',save_path)
         print(f"successfully set instruction:{language_instruction}")
     
     # Update the observation window buffer

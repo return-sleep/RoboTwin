@@ -76,7 +76,6 @@ def main(usr_args):
     print('Front Camera Config:\n    type: '+ str(args['front_camera_type']) + '\n    fovy: ' + str(args['front_camera_fovy']) + '\n    camera_w: ' + str(args['front_camera_w']) + '\n    camera_h: ' + str(args['front_camera_h']))
     print('\n=======================================')
 
-    task = class_decorator(args['task_name'])
     args['model_name'] = model_name
     args['checkpoint_id'] = checkpoint_num
 
@@ -89,32 +88,35 @@ def main(usr_args):
         rdt = RDT(f"./policy/RDT/checkpoints/{model_name}/checkpoint-{checkpoint_num}/pytorch_model/mp_rank_00_model_states.pt",task_name)
     except:
         rdt = RDT(f"./policy/RDT/checkpoints/{model_name}/checkpoint-{checkpoint_num}/",task_name)
-    rdt.random_set_language()
-    st_seed, suc_num = test_policy(task, args, rdt, st_seed, test_num=test_num)
-    suc_nums.append(suc_num)
+    for i in range(50):
+        rdt.random_set_language(i)
+    
+    # task = class_decorator(args['task_name'])
+    # st_seed, suc_num = test_policy(task, args, rdt, st_seed, test_num=test_num)
+    # suc_nums.append(suc_num)
 
-    topk_success_rate = sorted(suc_nums, reverse=True)[:topk]
-    save_dir = Path(f'result_{rdt}/{task_name}_{usr_args.head_camera_type}')     # TODO: add your policy name
-    save_dir.mkdir(parents=True, exist_ok=True)
-    file_path = save_dir / f'ckpt_{checkpoint_num}_seed_{seed}.txt'
-    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # topk_success_rate = sorted(suc_nums, reverse=True)[:topk]
+    # save_dir = Path(f'result_{rdt}/{task_name}_{usr_args.head_camera_type}')     # TODO: add your policy name
+    # save_dir.mkdir(parents=True, exist_ok=True)
+    # file_path = save_dir / f'ckpt_{checkpoint_num}_seed_{seed}.txt'
+    # current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    with open(file_path, 'w') as file:
-        file.write(f'Timestamp: {current_time}\n\n')
+    # with open(file_path, 'w') as file:
+    #     file.write(f'Timestamp: {current_time}\n\n')
 
-        file.write(f'Checkpoint Num: {checkpoint_num}\n')
+    #     file.write(f'Checkpoint Num: {checkpoint_num}\n')
         
-        file.write('Successful Rate of Diffenent checkpoints:\n')
-        file.write('\n'.join(map(str, np.array(suc_nums) / test_num)))
-        file.write('\n\n')
-        file.write(f'TopK {topk} Success Rate (every):\n')
-        file.write('\n'.join(map(str, np.array(topk_success_rate) / test_num)))
-        file.write('\n\n')
-        file.write(f'TopK {topk} Success Rate:\n')
-        file.write(f'\n'.join(map(str, np.array(topk_success_rate) / (topk * test_num))))
-        file.write('\n\n')
+    #     file.write('Successful Rate of Diffenent checkpoints:\n')
+    #     file.write('\n'.join(map(str, np.array(suc_nums) / test_num)))
+    #     file.write('\n\n')
+    #     file.write(f'TopK {topk} Success Rate (every):\n')
+    #     file.write('\n'.join(map(str, np.array(topk_success_rate) / test_num)))
+    #     file.write('\n\n')
+    #     file.write(f'TopK {topk} Success Rate:\n')
+    #     file.write(f'\n'.join(map(str, np.array(topk_success_rate) / (topk * test_num))))
+    #     file.write('\n\n')
 
-    print(f'Data has been saved to {file_path}')
+    # print(f'Data has been saved to {file_path}')
     
 
 def test_policy(Demo_class, args, policy, st_seed, test_num=20):
@@ -180,8 +182,8 @@ def test_policy(Demo_class, args, policy, st_seed, test_num=20):
     return now_seed, Demo_class.suc
 
 if __name__ == "__main__":
-    from test_render import Sapien_TEST
-    Sapien_TEST()
+    # from test_render import Sapien_TEST
+    # Sapien_TEST()
     
     parser = ArgumentParser()
 
